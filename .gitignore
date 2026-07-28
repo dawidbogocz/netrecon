@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.db
+netrecon.db
+.DS_Store
+*.swp
+*.swo
+*~

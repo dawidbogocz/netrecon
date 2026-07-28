@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "netrecon"
+version = "0.1.0"
+description = "Network reconnaissance toolkit: ping sweep, port scanning, banner grabbing, OS fingerprinting, and phishing URL analysis with a web dashboard"
+authors = [{ name = "Dawid Bogocz" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "rich>=13.0",
+    "scapy>=2.5.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "dnspython>=2.4.0",
+    "tldextract>=5.0.0",
+    "jinja2>=3.1.0",
+    "aiofiles>=23.0",
+]
+
+[project.scripts]
+netrecon = "netrecon.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["netrecon*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

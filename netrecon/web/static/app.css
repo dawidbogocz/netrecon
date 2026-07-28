@@ -1,0 +1,230 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+header {
+    margin-bottom: 2rem;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 1rem;
+}
+
+header h1 {
+    color: #58a6ff;
+    font-size: 1.8rem;
+    letter-spacing: -0.5px;
+}
+
+.subtitle {
+    color: #8b949e;
+    font-size: 0.9rem;
+}
+
+.scan-form {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.input-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.input-row input[type="text"] {
+    flex: 1;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #c9d1d9;
+    padding: 0.6rem 1rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.input-row select {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #c9d1d9;
+    padding: 0.6rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.input-row button {
+    background: #238636;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    padding: 0.6rem 1.5rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.input-row button:hover {
+    background: #2ea043;
+}
+
+.options-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.options-row label {
+    color: #8b949e;
+    font-size: 0.85rem;
+}
+
+.options-row input {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #c9d1d9;
+    padding: 0.3rem 0.5rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+}
+
+.htmx-indicator {
+    display: none;
+    color: #58a6ff;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+.htmx-request .htmx-indicator {
+    display: block;
+}
+
+.htmx-indicator.htmx-request {
+    display: block;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+}
+
+main {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.placeholder {
+    color: #484f58;
+    font-style: italic;
+}
+
+aside {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+aside h2 {
+    color: #58a6ff;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 0.5rem;
+}
+
+/* Results styling */
+.result-section {
+    margin-bottom: 1.5rem;
+}
+
+.result-section h3 {
+    color: #58a6ff;
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.result-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.result-table th {
+    text-align: left;
+    color: #8b949e;
+    border-bottom: 1px solid #30363d;
+    padding: 0.5rem;
+}
+
+.result-table td {
+    padding: 0.5rem;
+    border-bottom: 1px solid #21262d;
+}
+
+.status-open { color: #3fb950; }
+.status-closed { color: #f85149; }
+.status-filtered { color: #d29922; }
+
+.risk-critical { color: #f85149; font-weight: bold; }
+.risk-high { color: #d29922; font-weight: bold; }
+.risk-medium { color: #58a6ff; }
+.risk-low { color: #3fb950; }
+
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
+.badge-danger { background: #3b1f1f; color: #f85149; border: 1px solid #f85149; }
+.badge-warning { background: #3b2e1a; color: #d29922; border: 1px solid #d29922; }
+.badge-info { background: #1a2b3b; color: #58a6ff; border: 1px solid #58a6ff; }
+.badge-success { background: #1a3b2a; color: #3fb950; border: 1px solid #3fb950; }
+
+/* History list */
+.history-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #21262d;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.history-item:hover {
+    background: #1c2128;
+}
+
+.history-item .target {
+    color: #c9d1d9;
+}
+
+.history-item .meta {
+    color: #484f58;
+    font-size: 0.75rem;
+}
+
+.failed { color: #f85149; }

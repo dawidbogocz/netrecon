@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>netrecon — Network Reconnaissance Dashboard</title>
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>netrecon</h1>
+            <p class="subtitle">Network Reconnaissance Toolkit</p>
+        </header>
+
+        <section class="scan-form">
+            <form hx-get="/scan" hx-target="#results" hx-trigger="submit" hx-indicator="#spinner">
+                <div class="input-row">
+                    <input type="text" name="target" placeholder="Target (IP, CIDR, or URL)" required>
+                    <select name="mode">
+                        <option value="ping">Ping Sweep</option>
+                        <option value="scan">Port Scan</option>
+                        <option value="banner">Banner Grab</option>
+                        <option value="fingerprint">OS Fingerprint</option>
+                        <option value="phish">Phishing URL Analysis</option>
+                    </select>
+                    <button type="submit">Scan</button>
+                </div>
+                <div class="options-row">
+                    <label>Ports: <input type="text" name="ports" placeholder="22,80,443 or 1-1024"></label>
+                    <label>Timeout: <input type="number" name="timeout" value="2" min="0.5" step="0.5" style="width:70px"></label>
+                </div>
+            </form>
+            <div id="spinner" class="htmx-indicator">Scanning...</div>
+        </section>
+
+        <div class="layout">
+            <main id="results">
+                <p class="placeholder">Run a scan to see results here.</p>
+            </main>
+            <aside>
+                <h2>Recent Scans</h2>
+                <div id="recent-scans" hx-get="/history" hx-trigger="load" hx-swap="innerHTML">
+                    <p>Loading...</p>
+                </div>
+            </aside>
+        </div>
+    </div>
+</body>
+</html>

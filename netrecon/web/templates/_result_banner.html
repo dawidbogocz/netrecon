@@ -1,0 +1,27 @@
+<div class="result-section">
+    <h3>Banner Grab Results — {{ target }}</h3>
+    {% set with_banner = result | selectattr("banner", "ne", "") | list %}
+    <p>{{ with_banner|length }} with banners / {{ result|length }} checked</p>
+    {% if result %}
+    <table class="result-table">
+        <thead>
+            <tr><th>Port</th><th>Service</th><th>Banner</th></tr>
+        </thead>
+        <tbody>
+            {% for entry in result %}
+            <tr>
+                <td>{{ entry.port }}</td>
+                <td>{{ entry.service or "—" }}</td>
+                <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis;">
+                    {% if entry.banner %}
+                        {{ entry.banner[:120] }}
+                    {% else %}
+                        <span class="status-closed">no banner</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>

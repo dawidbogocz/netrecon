@@ -1,0 +1,22 @@
+<div class="result-section">
+    <h3>OS Fingerprint — {{ target }}</h3>
+    <div style="padding: 1rem; background: #0d1117; border-radius: 6px; margin-top: 0.5rem;">
+        <table class="result-table">
+            <tr><td style="color:#8b949e;">OS Guess</td>
+                <td style="color:#58a6ff; font-weight:bold;">{{ result.os_guess }}</td></tr>
+            <tr><td style="color:#8b949e;">Confidence</td>
+                <td>
+                    {% if result.confidence > 70 %}
+                        <span class="badge badge-success">{{ result.confidence }}%</span>
+                    {% elif result.confidence > 30 %}
+                        <span class="badge badge-warning">{{ result.confidence }}%</span>
+                    {% else %}
+                        <span class="badge badge-danger">{{ result.confidence }}%</span>
+                    {% endif %}
+                </td></tr>
+            <tr><td style="color:#8b949e;">TTL</td><td>{{ result.ttl or "—" }}</td></tr>
+            <tr><td style="color:#8b949e;">Window Size</td><td>{{ result.window_size or "—" }}</td></tr>
+            <tr><td style="color:#8b949e;">Method</td><td>{{ result.method or "—" }}</td></tr>
+        </table>
+    </div>
+</div>

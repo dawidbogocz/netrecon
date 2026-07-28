@@ -1,0 +1,29 @@
+<div class="result-section">
+    <h3>Port Scan Results — {{ target }}</h3>
+    {% set open_ports = result | selectattr("state", "equalto", "open") | list %}
+    <p>{{ open_ports|length }} open / {{ result|length }} scanned</p>
+    {% if result %}
+    <table class="result-table">
+        <thead>
+            <tr><th>Port</th><th>State</th><th>Service</th></tr>
+        </thead>
+        <tbody>
+            {% for port in result %}
+            <tr>
+                <td>{{ port.port }}</td>
+                <td>
+                    {% if port.state == "open" %}
+                        <span class="status-open">{{ port.state }}</span>
+                    {% elif port.state == "closed" %}
+                        <span class="status-closed">{{ port.state }}</span>
+                    {% else %}
+                        <span class="status-filtered">{{ port.state }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ port.service or "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>

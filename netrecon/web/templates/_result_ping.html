@@ -1,0 +1,19 @@
+<div class="result-section">
+    <h3>Ping Sweep Results — {{ target }}</h3>
+    <p>{{ result|length }} responsive host(s) found.</p>
+    {% if result %}
+    <table class="result-table">
+        <thead>
+            <tr><th>IP Address</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+            {% for host in result %}
+            <tr>
+                <td>{{ host.ip }}</td>
+                <td><span class="status-open">alive</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>

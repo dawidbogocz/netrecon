@@ -1,0 +1,57 @@
+<div class="result-section">
+    <h3>Phishing URL Analysis — {{ target }}</h3>
+    <div style="padding: 1rem; background: #0d1117; border-radius: 6px; margin-top: 0.5rem;">
+        <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1rem;">
+            <span style="font-size:2rem; font-weight:bold;">
+                {% if result.risk_score >= 81 %}
+                    <span class="risk-critical">{{ result.risk_score }}/100</span>
+                {% elif result.risk_score >= 51 %}
+                    <span class="risk-high">{{ result.risk_score }}/100</span>
+                {% elif result.risk_score >= 21 %}
+                    <span class="risk-medium">{{ result.risk_score }}/100</span>
+                {% else %}
+                    <span class="risk-low">{{ result.risk_score }}/100</span>
+                {% endif %}
+            </span>
+            <span style="font-size:1.2rem;">
+                {% set level = result.risk_level %}
+                {% if level == "Confirmed Phishing" %}
+                    <span class="badge badge-danger">{{ level }}</span>
+                {% elif level == "Likely Phishing" %}
+                    <span class="badge badge-warning">{{ level }}</span>
+                {% elif level == "Suspicious" %}
+                    <span class="badge badge-info">{{ level }}</span>
+                {% else %}
+                    <span class="badge badge-success">{{ level }}</span>
+                {% endif %}
+            </span>
+        </div>
+
+        <table class="result-table">
+            <tr><td style="color:#8b949e;">Hostname</td>
+                <td>{{ result.parsed.hostname }}</td></tr>
+            <tr><td style="color:#8b949e;">Scheme</td>
+                <td>{{ result.parsed.scheme }}</td></tr>
+        </table>
+
+        <h4 style="color:#58a6ff; margin-top:1rem; margin-bottom:0.5rem;">Check Breakdown</h4>
+        <table class="result-table">
+            <thead><tr><th>Check</th><th>Score</th><th>Detail</th></tr></thead>
+            <tbody>
+                {% for check in result.checks %}
+                <tr>
+                    <td>{{ check.name }}</td>
+                    <td>
+                        {% if check.score > 0 %}
+                            <span class="status-closed">+{{ check.score }}</span>
+                        {% else %}
+                            <span class="status-open">0</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:0.8rem;">{{ check.detail[:100] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

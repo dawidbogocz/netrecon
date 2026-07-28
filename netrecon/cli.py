@@ -120,7 +120,7 @@ def ping(ctx, target, timeout, workers):
     results = PING.ping_sweep(target, timeout=timeout, workers=workers)
 
     if not results:
-        click.echo(f"No responsive hosts found in {network}")
+        click.echo(f"No responsive hosts found in {target}")
         return
 
     output_data = [{"ip": ip, "status": "alive"} for ip in results]

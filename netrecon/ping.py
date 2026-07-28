@@ -15,17 +15,37 @@ logger = logging.getLogger(__name__)
 try:
     from scapy.all import IP, ICMP, sr1, conf
     HAS_SCAPY = True
+    # Quick test to see if scapy can actually use raw sockets
+    _SCAPY_USABLE = False
+    try:
+        conf.verb = 0
+        _test = IP(dst="127.0.0.1") / ICMP()
+        _SCAPY_USABLE = True
+    except Exception:
+        _SCAPY_USABLE = False
 except ImportError:
     HAS_SCAPY = False
+    _SCAPY_USABLE = False
 
 
-def _ping_host_scapy(ip: str, timeout: float) -> bool:
-    """Ping a single host via scapy ICMP."""
+def _ping_host_scapy(ip: str, timeout: float) -> bool | None:
+    """Ping a single host via scapy ICMP.
+
+    Returns True if responsive, False if not, None if permission error.
+    """
     try:
-        conf.verb = 0  # suppress scapy output
         pkt = IP(dst=ip) / ICMP()
         reply = sr1(pkt, timeout=timeout, verbose=0)
         return reply is not None
+    except PermissionError:
+        logger.debug("scapy ping %s: permission denied (need root for raw sockets)", ip)
+        return None
+    except OSError as e:
+        if "Operation not permitted" in str(e):
+            logger.debug("scapy ping %s: %s", ip, e)
+            return None
+        logger.debug("scapy ping %s failed: %s", ip, e)
+        return False
     except Exception as e:
         logger.debug("scapy ping %s failed: %s", ip, e)
         return False
@@ -54,9 +74,16 @@ def _ping_host_subprocess(ip: str, timeout: float) -> bool:
 
 
 def _ping_host(ip: str, timeout: float, use_scapy: bool) -> bool:
-    """Ping a single host, returning True if responsive."""
+    """Ping a single host, returning True if responsive.
+
+    Falls back to subprocess ping if scapy is unavailable or lacks
+    raw socket permissions.
+    """
     if use_scapy:
-        return _ping_host_scapy(ip, timeout)
+        result = _ping_host_scapy(ip, timeout)
+        if result is not None:
+            return result
+        # scapy returned None (permission error), fall back to subprocess
     return _ping_host_subprocess(ip, timeout)
 
 
@@ -98,7 +125,6 @@ def parse_target(target: str) -> list[str]:
             end_ip = ipaddress.ip_address(end_str)
         else:
             # Partial range: 192.168.0.1-200
-            # Parse the base prefix from start
             start_parts = start_str.split(".")
             if len(start_parts) != 4:
                 raise ValueError(
@@ -141,10 +167,11 @@ def ping_sweep(
     """Ping sweep a network range.
 
     Accepts CIDR notation (192.168.1.0/24), IP ranges (192.168.0.1-200),
-    or single IPs.
+    or single IPs. Automatically falls back to system ping if scapy
+    lacks raw socket permissions.
 
     Args:
-        target: Network in CIDR (192.168.1.0/24) or range (192.168.0.1-200) format
+        target: Network in CIDR, range, or single IP format
         timeout: Seconds to wait for each ping reply
         workers: Max concurrent ping threads
         prefer_scapy: Use scapy ICMP if available (falls back to subprocess ping)
@@ -154,9 +181,11 @@ def ping_sweep(
     """
     hosts = parse_target(target)
 
-    use_scapy = prefer_scapy and HAS_SCAPY
-    if not use_scapy and not HAS_SCAPY:
-        logger.info("scapy not available, using system ping")
+    use_scapy = prefer_scapy and _SCAPY_USABLE
+    if use_scapy:
+        logger.debug("Using scapy ICMP for ping sweep")
+    else:
+        logger.debug("Using system ping for ping sweep")
 
     responsive: list[str] = []
 

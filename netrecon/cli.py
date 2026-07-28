@@ -98,17 +98,26 @@ def _handle_output(data, ctx, extra_formatter=None):
 # ── ping ──────────────────────────────────────────────────────────
 
 @main.command()
-@click.argument("network")
+@click.argument("target")
 @click.option("--timeout", default=2.0, type=float, help="Ping timeout in seconds")
 @click.option("--workers", default=20, type=int, help="Max concurrent pings")
 @click.pass_context
-def ping(ctx, network, timeout, workers):
-    """ICMP ping sweep of a CIDR network range.
+def ping(ctx, target, timeout, workers):
+    """ICMP ping sweep of a network range.
 
-    Example: netrecon ping 192.168.1.0/24
+    Accepts CIDR notation (192.168.1.0/24), IP ranges (192.168.0.1-200),
+    or single IPs.
+
+    Examples:
+
+        netrecon ping 192.168.1.0/24
+
+        netrecon ping 192.168.0.1-200
+
+        netrecon ping 192.168.0.1
     """
     _lazy_import()
-    results = PING.ping_sweep(network, timeout=timeout, workers=workers)
+    results = PING.ping_sweep(target, timeout=timeout, workers=workers)
 
     if not results:
         click.echo(f"No responsive hosts found in {network}")

@@ -3,16 +3,20 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 
-A modular network reconnaissance toolkit with CLI and web dashboard. Supports ping sweeps, port scanning, service banner grabbing, OS fingerprinting, and phishing URL analysis.
+A modular network reconnaissance toolkit with CLI and web dashboard. Ping sweeps, port scanning, banner grabbing, OS fingerprinting, DNS enumeration, phishing URL analysis, geolocation, continuous network watch with Discord alerts, and HTML reports.
 
 ## Features
 
-- **Ping Sweep** — ICMP-based host discovery across CIDR ranges (concurrent, with progress)
-- **Port Scanning** — TCP Connect (no root) and SYN stealth (scapy, requires root)
-- **Banner Grabbing** — Protocol-aware probes to read service banners
-- **OS Fingerprinting** — TTL + TCP window size signature matching
-- **Phishing URL Analysis** — 8-factor risk scoring (suspicious TLDs, typosquatting, URL shorteners, @-redirects, HTTPS validity, domain age, IP-based hosts, excessive subdomains)
-- **Web Dashboard** — FastAPI + htmx, dark terminal aesthetic
+- **Ping Sweep** — ICMP host discovery. CIDR (`192.168.1.0/24`) or range (`192.168.0.1-200`)
+- **Port Scanning** — TCP Connect (no root) and SYN stealth (scapy)
+- **Banner Grabbing** — Protocol-aware probes (HTTP, SSH, SMTP, etc.)
+- **OS Fingerprinting** — TTL + TCP window signature matching
+- **Phishing URL Analysis** — 8-factor risk scoring (suspicious TLDs, typosquatting via Levenshtein, @-redirects, URL shorteners, HTTPS cert inspection, domain age via WHOIS, IP-based hosts, excessive subdomains)
+- **DNS Enumeration** — Lookup (A, MX, NS, TXT, SOA, CNAME), reverse DNS, subdomain brute-force
+- **Geolocation** — IP location via ip-api.com (free, no key)
+- **Network Watch** — Continuous scanning with change detection and Discord webhook alerts
+- **HTML Reports** — Standalone reports with tables, maps, and risk scoring
+- **Web Dashboard** — FastAPI + htmx + SSE live progress, dark terminal aesthetic
 - **Export** — Terminal tables (rich), JSON, CSV
 
 ## Installation
@@ -26,94 +30,89 @@ Or from source:
 ```bash
 git clone https://github.com/dawidbogocz/netrecon.git
 cd netrecon
-pip install -e .
-```
-
-For development:
-
-```bash
 pip install -e ".[dev]"
 ```
 
-## CLI Usage
+## CLI Reference
 
-```
-netrecon ping 192.168.1.0/24
-netrecon scan 192.168.1.1 -p 22,80,443
-netrecon scan 192.168.1.1 -p 1-1024
-netrecon scan 192.168.1.1 --top-ports 100
-netrecon scan 192.168.1.1 --syn              # requires root
-netrecon banner 192.168.1.1 -p 22,80,443
-netrecon fingerprint 192.168.1.1
-netrecon phish https://suspicious-link.tk/login
-netrecon all 192.168.1.1                     # runs all recon modules
-netrecon web --port 8080                     # launch dashboard
-```
+| Command | Description |
+|---------|-------------|
+| `ping <target>` | Ping sweep (CIDR, range, or single IP) |
+| `scan <host>` | TCP port scan (`-p 22,80,443`, `-p 1-1024`, `--syn`) |
+| `banner <host>` | Service banner grabbing (`-p required`) |
+| `fingerprint <host>` | OS fingerprinting |
+| `phish <url>` | Phishing URL risk analysis |
+| `dns lookup <domain>` | DNS record lookup (A, MX, NS, TXT, SOA, CNAME) |
+| `dns reverse <ip>` | Reverse DNS (PTR) lookup |
+| `dns enum <domain>` | Subdomain brute-force enumeration |
+| `geo <ip>` | IP geolocation |
+| `watch <target>` | Continuous network scanner with Discord alerts |
+| `report` | Generate HTML report from scan history |
+| `all <target>` | Run all recon modules |
+| `web` | Launch web dashboard |
 
-Global options:
+Global options: `--output json|csv`, `--output-file <path>`, `-v`
 
-```
---output json|csv     Output format
---output-file path    Write to file
--v                    Verbose debug logging
-```
-
-Port specifications:
-
-| Spec | Example | Result |
-|------|---------|--------|
-| Comma-separated | `-p 22,80,443` | Ports 22, 80, 443 |
-| Range | `-p 1-1024` | Ports 1 through 1024 |
-| Top ports | `-p top-100` | First 100 common ports |
-| Mixed | `-p 22,443,8000-8010` | Combined |
-
-## Dashboard
-
-Start the web dashboard:
+### Examples
 
 ```bash
+netrecon ping 192.168.0.1-200                     # IP range
+netrecon scan 192.168.1.1 -p 22,80,443 --output json
+netrecon phish http://paypall.tk@192.168.1.1/login
+netrecon dns lookup google.com --timeout 3
+netrecon dns reverse 8.8.8.8
+netrecon dns enum example.com
+netrecon geo 8.8.8.8
+netrecon watch 192.168.0.1-254 --interval 60 --webhook <url>
+netrecon report --target 192.168.0.0/24 --output scan_report.html
 netrecon web --port 8080
 ```
 
-Then open `http://localhost:8080`. The dashboard lets you run all scan types from the browser with a dark terminal-themed interface. Results are saved to SQLite history.
+## Dashboard
 
-## Phishing Analysis
+```bash
+netrecon web --port 8080 --host 0.0.0.0
+```
 
-The `phish` module scores URLs from 0 (Safe) to 100 (Confirmed Phishing) across 8 categories:
+Features:
+- Live scan progress via Server-Sent Events (SSE)
+- Ping sweep, port scan, banner grab, OS fingerprint, phishing analysis
+- Scan history saved to SQLite
+- Dark terminal aesthetic
 
-| Check | Weight | What it detects |
-|-------|--------|-----------------|
-| Suspicious TLD | 15 | `.tk`, `.ml`, `.ga`, `.xyz`, `.top`, etc. |
-| URL Shortener | 15 | `bit.ly`, `tinyurl.com`, `t.co`, etc. |
-| @ Symbol | 10 | Credential harvesting redirects |
-| Excessive Subdomains | 10 | >3 subdomain levels |
-| Typosquatting | 15 | Levenshtein matching against 30+ brands |
-| IP-based Hostname | 10 | Raw IP instead of domain |
-| HTTPS Validity | 10 | Missing/expired/invalid TLS cert |
-| Domain Age | 15 | Newly registered domains |
+## Watch Mode & Discord Alerts
 
-Risk levels: Safe (0-20), Suspicious (21-50), Likely Phishing (51-80), Confirmed Phishing (81-100)
+Monitor your network continuously:
+
+```bash
+netrecon watch 192.168.0.1-254 --interval 60 --webhook <discord_webhook_url>
+```
+
+Detects new devices (join) and offline devices (leave), logs all events, and sends formatted Discord embeds.
 
 ## Project Structure
 
 ```
 netrecon/
 ├── netrecon/
-│   ├── __init__.py
 │   ├── cli.py          # Click CLI entry point
-│   ├── ping.py         # Ping sweep module
-│   ├── scan.py         # Port scanner (connect + SYN)
+│   ├── ping.py         # Ping sweep (CIDR + range)
+│   ├── scan.py         # Port scanner
 │   ├── banner.py       # Service banner grabber
 │   ├── fingerprint.py  # OS fingerprinting
 │   ├── phish.py        # Phishing URL analyzer
+│   ├── dns.py          # DNS lookup + subdomain enum
+│   ├── geo.py          # IP geolocation
+│   ├── watch.py        # Continuous network watch
+│   ├── discord.py      # Discord webhook alerts
+│   ├── report.py       # HTML report generator
 │   ├── output.py       # Rich/JSON/CSV formatters
-│   ├── db.py           # SQLite scan history
+│   ├── db.py           # SQLite scan history + events
 │   └── web/            # FastAPI + htmx dashboard
-│       ├── app.py
-│       ├── templates/
-│       └── static/
-├── tests/
-├── pyproject.toml
+│       ├── app.py      # SSE live progress
+│       ├── templates/  # Jinja2 templates
+│       └── static/     # CSS
+├── tests/              # 102 unit tests
 └── README.md
 ```
 

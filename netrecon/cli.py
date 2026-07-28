@@ -18,6 +18,9 @@ import click
 from netrecon import __version__
 from netrecon.scan import parse_ports, COMMON_PORTS
 
+# Discord webhook URL (optional, set via env var for watch mode)
+DISCORD_WEBHOOK = ""
+
 # Module references (lazy-imported in commands to keep CLI fast)
 PING = None
 SCAN = None
@@ -25,10 +28,14 @@ BANNER = None
 FINGERPRINT = None
 PHISH = None
 OUTPUT = None
+DNS = None
+GEO = None
+WATCH = None
+REPORT = None
 
 
 def _lazy_import():
-    global PING, SCAN, BANNER, FINGERPRINT, PHISH, OUTPUT
+    global PING, SCAN, BANNER, FINGERPRINT, PHISH, OUTPUT, DNS, GEO, WATCH, REPORT
     if PING is not None:
         return
     from netrecon import ping as _p
@@ -37,7 +44,12 @@ def _lazy_import():
     from netrecon import fingerprint as _f
     from netrecon import phish as _ph
     from netrecon import output as _o
+    from netrecon import dns as _d
+    from netrecon import geo as _g
+    from netrecon import watch as _w
+    from netrecon import report as _r
     PING, SCAN, BANNER, FINGERPRINT, PHISH, OUTPUT = _p, _s, _b, _f, _ph, _o
+    DNS, GEO, WATCH, REPORT = _d, _g, _w, _r
 
 
 def _setup_logging(verbose: bool):
@@ -250,6 +262,153 @@ def phish(ctx, url, timeout):
     if ctx.obj.get("output_file"):
         ext_fmt = ctx.obj["output"] if ctx.obj["output"] in ("json", "csv") else "json"
         OUTPUT.export_results(result, ext_fmt, ctx.obj["output_file"])
+
+
+# ── dns ────────────────────────────────────────────────────────────
+
+@main.group()
+def dns():
+    """DNS lookups and subdomain enumeration.
+
+    Examples:
+
+        netrecon dns lookup example.com
+
+        netrecon dns reverse 8.8.8.8
+
+        netrecon dns enum example.com
+    """
+    pass
+
+
+@dns.command("lookup")
+@click.argument("hostname")
+@click.option("--timeout", default=3.0, type=float)
+@click.pass_context
+def dns_lookup(ctx, hostname, timeout):
+    """Look up all DNS record types for a hostname."""
+    _lazy_import()
+    result = DNS.dns_lookup(hostname, timeout=timeout)
+    if not result:
+        click.echo(f"No DNS records found for {hostname}")
+        return
+    OUTPUT.print_results(
+        [{"type": k, "value": v[0][0], "ttl": v[0][1]} for k, v in result.items()],
+        ctx.obj["output"],
+    )
+    if ctx.obj.get("output_file"):
+        ext = ctx.obj["output"] if ctx.obj["output"] in ("json", "csv") else "json"
+        OUTPUT.export_results(result, ext, ctx.obj["output_file"])
+
+
+@dns.command("reverse")
+@click.argument("ip")
+@click.option("--timeout", default=3.0, type=float)
+@click.pass_context
+def dns_reverse(ctx, ip, timeout):
+    """Reverse DNS lookup — find hostname for an IP."""
+    _lazy_import()
+    hostname = DNS.dns_reverse(ip, timeout=timeout)
+    if hostname:
+        click.echo(f"{ip} -> {hostname}")
+    else:
+        click.echo(f"No PTR record for {ip}")
+
+
+@dns.command("enum")
+@click.argument("domain")
+@click.option("--timeout", default=2.0, type=float)
+@click.option("--workers", default=20, type=int)
+@click.pass_context
+def dns_enum(ctx, domain, timeout, workers):
+    """Enumerate subdomains using a built-in wordlist."""
+    _lazy_import()
+    click.echo(f"Enumerating subdomains of {domain}...", err=True)
+    results = DNS.dns_enum(domain, timeout=timeout, workers=workers)
+    if results:
+        click.echo(f"Found {len(results)} subdomain(s):")
+        OUTPUT.print_results(results, ctx.obj["output"])
+    else:
+        click.echo("No subdomains found")
+    if ctx.obj.get("output_file"):
+        ext = ctx.obj["output"] if ctx.obj["output"] in ("json", "csv") else "json"
+        OUTPUT.export_results(results, ext, ctx.obj["output_file"])
+
+
+# ── geo ────────────────────────────────────────────────────────────
+
+@main.command()
+@click.argument("ip")
+@click.option("--timeout", default=3.0, type=float)
+@click.pass_context
+def geo(ctx, ip, timeout):
+    """Look up geolocation data for an IP address.
+
+    Uses ip-api.com (free, no key needed).
+
+    Example: netrecon geo 8.8.8.8
+    """
+    _lazy_import()
+    result = GEO.geo_lookup(ip, timeout=timeout)
+    OUTPUT.print_results([result], ctx.obj["output"])
+
+
+# ── watch ──────────────────────────────────────────────────────────
+
+@main.command()
+@click.argument("target")
+@click.option("--interval", default=60, type=int, help="Seconds between scans")
+@click.option("--iterations", default=0, type=int, help="Number of scans (0=infinite)")
+@click.option("--timeout", default=1.0, type=float)
+@click.option("--workers", default=50, type=int)
+@click.option("--webhook", default=None, help="Discord webhook URL for alerts")
+def watch(target, interval, iterations, timeout, workers, webhook):
+    """Continuously scan a network and detect changes.
+
+    Scans the target at regular intervals, detects new and offline
+    hosts, logs to database, and optionally sends Discord alerts.
+
+    Examples:
+
+        netrecon watch 192.168.0.1-254 --interval 60
+
+        netrecon watch 192.168.0.1-254 --webhook <url> --interval 300
+    """
+    _lazy_import()
+    watcher = WATCH.NetworkWatcher(
+        target,
+        discord_webhook=webhook or DISCORD_WEBHOOK,
+        timeout=timeout,
+        workers=workers,
+    )
+    try:
+        watcher.run(interval=interval, iterations=iterations)
+    except KeyboardInterrupt:
+        click.echo("\nWatch stopped by user")
+        watcher.stop()
+
+
+# ── report ─────────────────────────────────────────────────────────
+
+@main.command()
+@click.option("--target", default=None, help="Filter by scan target")
+@click.option("--scan-id", default=None, help="Report on a specific scan")
+@click.option("--output", default="netrecon_report.html", help="Output file path")
+def report(target, scan_id, output):
+    """Generate an HTML report from scan history.
+
+    Produces a standalone HTML file with results, port maps,
+    geolocation maps, and phishing analysis.
+
+    Example: netrecon report --target 192.168.0.0/24
+    """
+    _lazy_import()
+    path = REPORT.generate_report(
+        target=target,
+        scan_id=scan_id,
+        output_path=output,
+    )
+    click.echo(f"Report generated: {path}")
 
 
 # ── all ────────────────────────────────────────────────────────────

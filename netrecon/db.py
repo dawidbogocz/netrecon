@@ -65,6 +65,21 @@ def _init_schema(conn: sqlite3.Connection):
 
         CREATE INDEX IF NOT EXISTS idx_scans_type
             ON scans(scan_type);
+
+        CREATE TABLE IF NOT EXISTS events (
+            id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            target TEXT NOT NULL,
+            message TEXT,
+            details TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_events_created
+            ON events(created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_events_type
+            ON events(event_type);
     """)
 
 
@@ -212,6 +227,73 @@ def get_stats(db_path: str | None = None) -> dict:
         "by_type": type_counts,
         "latest_scan": latest["started_at"] if latest else None,
     }
+
+
+def save_event(
+    event_type: str,
+    target: str,
+    message: str = "",
+    details: str | None = None,
+    db_path: str | None = None,
+) -> str:
+    """Save a network event (join, leave, alert) to the database.
+
+    Args:
+        event_type: "join", "leave", "watch_start", "watch_stop", etc.
+        target: IP or hostname
+        message: Short description
+        details: Optional JSON payload
+        db_path: Optional custom database path
+
+    Returns:
+        event_id string
+    """
+    import uuid
+    event_id = str(uuid.uuid4())[:12]
+    now = datetime.now(timezone.utc).isoformat()
+
+    conn = _get_connection(db_path)
+    conn.execute(
+        """INSERT INTO events (id, event_type, target, message, details, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (event_id, event_type, target, message, details or "", now),
+    )
+    conn.commit()
+    return event_id
+
+
+def get_recent_events(
+    limit: int = 50,
+    event_type: str | None = None,
+    db_path: str | None = None,
+) -> list[dict]:
+    """Get recent events from the database.
+
+    Args:
+        limit: Max events to return
+        event_type: Optional filter
+        db_path: Optional custom database path
+
+    Returns:
+        List of event dicts
+    """
+    conn = _get_connection(db_path)
+
+    if event_type:
+        rows = conn.execute(
+            """SELECT * FROM events
+               WHERE event_type = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (event_type, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT * FROM events
+               ORDER BY created_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict:

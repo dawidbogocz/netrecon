@@ -7,7 +7,6 @@ Supports TCP Connect (full handshake, no root needed) and SYN stealth
 import logging
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from ipaddress import ip_address
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,8 @@ PORT_SERVICES: dict[int, str] = {
 
 def resolve_service(port: int) -> str:
     """Look up service name for a port number."""
+    if port < 0 or port > 65535:
+        return ""
     try:
         return socket.getservbyport(port)
     except (OSError, ValueError):
@@ -64,10 +65,8 @@ def _tcp_connect_port(host: str, port: int, timeout: float) -> dict:
             result["state"] = "filtered"
     except socket.gaierror:
         result["state"] = "error"
-    except socket.timeout:
-        result["state"] = "filtered"
     except OSError:
-        result["state"] = "error"
+        result["state"] = "filtered"
     return result
 
 
@@ -115,7 +114,6 @@ def tcp_connect_scan(
 
 def _syn_scan_port(host: str, port: int, timeout: float) -> dict:
     """Scan a single port via SYN stealth."""
-    from scapy.all import IP, TCP, sr1, conf
     result = {"port": port, "state": "closed", "service": resolve_service(port)}
     try:
         conf.verb = 0

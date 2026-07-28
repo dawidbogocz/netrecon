@@ -1,0 +1,46 @@
+<div class="result-section" id="scan-progress-{{ scan_id }}">
+    <h3>Scanning {{ target }}</h3>
+    <div style="margin: 1rem 0;">
+        <div id="progress-bar-{{ scan_id }}" style="height: 6px; background: #21262d; border-radius: 3px; overflow: hidden;">
+            <div style="width: 5%; height: 100%; background: #58a6ff; border-radius: 3px; transition: width 0.3s;"></div>
+        </div>
+        <p id="progress-msg-{{ scan_id }}" style="color: #8b949e; font-size: 0.85rem; margin-top: 0.5rem;">
+            Starting {{ mode }} scan...
+        </p>
+    </div>
+</div>
+
+<script>
+    (function() {
+        var scanId = "{{ scan_id }}";
+        var evtSource = new EventSource("/scan/stream/" + scanId);
+
+        evtSource.addEventListener("progress", function(e) {
+            var data = JSON.parse(e.data);
+            var pct = data.progress || 0;
+            var msg = data.message || "";
+            var bar = document.querySelector("#progress-bar-" + scanId + " div");
+            var msgEl = document.getElementById("progress-msg-" + scanId);
+            if (bar) bar.style.width = pct + "%";
+            if (msgEl) msgEl.textContent = msg;
+        });
+
+        evtSource.addEventListener("complete", function(e) {
+            evtSource.close();
+            var data = JSON.parse(e.data);
+            if (data.html) {
+                document.getElementById("scan-progress-" + scanId).outerHTML = data.html;
+            }
+        });
+
+        evtSource.addEventListener("error", function(e) {
+            evtSource.close();
+            var msg = "Scan failed";
+            try { var data = JSON.parse(e.data); msg = data.error || msg; } catch(ex) {}
+            var el = document.getElementById("scan-progress-" + scanId);
+            if (el) {
+                el.innerHTML = '<div class="error-panel"><h3>Scan Failed</h3><p>' + msg + '</p></div>';
+            }
+        });
+    })();
+</script>

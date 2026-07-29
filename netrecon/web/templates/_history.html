@@ -1,31 +1,36 @@
 {% for item in result %}
     {% if item.scan_type.startswith("dns/") %}
     <div class="history-item" hx-get="/dns?target={{ item.target }}&mode={{ item.scan_type.split('/')[1] }}"
-         hx-target="#results" hx-trigger="click">
+         hx-target="#results-dns" hx-trigger="click" hx-swap="innerHTML"
+         onclick="switchTab('dns')">
         <div class="target">{{ item.target }}</div>
         <div class="meta">{{ item.scan_type }} &middot; {{ item.started_at[:19] }}</div>
     </div>
     {% elif item.scan_type == "geo" %}
     <div class="history-item" hx-get="/geo?target={{ item.target }}"
-         hx-target="#results" hx-trigger="click">
+         hx-target="#results-geo" hx-trigger="click" hx-swap="innerHTML"
+         onclick="switchTab('geo')">
         <div class="target">{{ item.target }}</div>
         <div class="meta">geo &middot; {{ item.started_at[:19] }}</div>
     </div>
     {% elif item.scan_type == "watch" %}
     <div class="history-item" hx-get="/watch?target={{ item.target }}"
-         hx-target="#results" hx-trigger="click">
+         hx-target="#results-watch" hx-trigger="click" hx-swap="innerHTML"
+         onclick="switchTab('watch')">
         <div class="target">{{ item.target }}</div>
         <div class="meta">watch &middot; {{ item.started_at[:19] }}</div>
     </div>
     {% elif item.scan_type == "watch-enhanced" %}
     <div class="history-item" hx-get="/watch?target={{ item.target }}&enhanced=1"
-         hx-target="#results" hx-trigger="click">
+         hx-target="#results-watch" hx-trigger="click" hx-swap="innerHTML"
+         onclick="switchTab('watch')">
         <div class="target">{{ item.target }}</div>
         <div class="meta">watch (enhanced) &middot; {{ item.started_at[:19] }}</div>
     </div>
     {% else %}
     <div class="history-item" hx-get="/scan?target={{ item.target }}&mode={{ item.scan_type }}"
-         hx-target="#results" hx-trigger="click">
+         hx-target="#results-scan" hx-trigger="click" hx-swap="innerHTML"
+         onclick="switchTab('scan')">
         <div class="target">{{ item.target }}</div>
         <div class="meta">{{ item.scan_type }} &middot; {{ item.started_at[:19] }}</div>
     </div>

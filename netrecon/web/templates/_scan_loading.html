@@ -30,6 +30,10 @@
             var data = JSON.parse(e.data);
             if (data.html) {
                 document.getElementById("scan-progress-" + scanId).outerHTML = data.html;
+                // Refresh the recent scans sidebar
+                if (typeof htmx !== 'undefined') {
+                    htmx.ajax('GET', '/history', {target: '#recent-scans', swap: 'innerHTML'});
+                }
             }
         });
 

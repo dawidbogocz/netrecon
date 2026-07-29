@@ -262,6 +262,7 @@ aside h2 {
 .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
+.tab-results { margin-top: 1rem; }
 
 /* Loading spinner */
 .spinner {

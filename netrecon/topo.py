@@ -248,6 +248,47 @@ def _resolve_hostname(ip: str) -> str:
         return ""
 
 
+def get_tailscale_devices() -> list[dict]:
+    """Parse 'tailscale status' to get Tailscale mesh devices.
+
+    Returns:
+        List of {ip, hostname, os, status, online} dicts.
+    """
+    devices: list[dict] = []
+    try:
+        result = subprocess.run(
+            ["tailscale", "status"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            # Format: IP  hostname  user@  OS  status
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            ip = parts[0]
+            if not ip.startswith("100."):
+                continue
+            hostname = parts[1]
+            # user is parts[2] (e.g. dawidbogocz070@), skip it
+            ts_os = parts[3].lower()
+            # Status is everything after the OS column
+            status_str = " ".join(parts[4:]) if len(parts) > 4 else ""
+            online = "offline" not in status_str and "offline" not in status_str
+            devices.append({
+                "ip": ip,
+                "hostname": hostname,
+                "os": ts_os,
+                "status": status_str.strip() if status_str else "active",
+                "online": online,
+            })
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        logger.debug("Failed to run tailscale status: %s", e)
+    return devices
+
+
 def get_gateway_ip() -> Optional[str]:
     """Get the default gateway IP address.
 
@@ -301,12 +342,14 @@ def get_local_ip() -> Optional[str]:
 
 def build_topology(
     extra_hosts: list[dict] | None = None,
+    include_tailscale: bool = True,
 ) -> dict:
-    """Build a network topology graph from ARP cache and scan data.
+    """Build a network topology graph from ARP cache, scan data, and Tailscale.
 
     Args:
         extra_hosts: Optional list of {ip, ports, os} from a scan cycle
                      to enrich node data with open ports and OS info.
+        include_tailscale: Whether to include Tailscale mesh devices (default: True).
 
     Returns:
         {nodes: [...], edges: [...]} dict suitable for vis.js
@@ -314,6 +357,7 @@ def build_topology(
     devices = parse_arp_table()
     gateway = get_gateway_ip()
     local_ip = get_local_ip()
+    tailscale_devices = get_tailscale_devices() if include_tailscale else []
 
     # Index extra hosts by IP for enrichment
     extra_by_ip: dict[str, dict] = {}
@@ -447,5 +491,96 @@ def build_topology(
         # Edge to gateway (star topology for home networks)
         if gateway and ip != gateway:
             edges.append({"from": ip, "to": gateway, "label": "", "dashes": False})
+
+    # ── Tailscale devices ──────────────────────────────────────────
+    if tailscale_devices:
+        # Create a virtual "Tailscale Cloud" hub node
+        ts_hub_id = "tailscale-cloud"
+        if ts_hub_id not in seen_ips:
+            nodes.append({
+                "id": ts_hub_id,
+                "label": "Tailscale Mesh",
+                "ip": "100.x.x.x",
+                "mac": "",
+                "vendor": "Tailscale",
+                "group": "network",
+                "title": "<b>Tailscale Mesh</b><br>Virtual overlay network",
+                "shape": "hexagon",
+                "size": 28,
+                "color": "#58a6ff",
+            })
+            seen_ips.add(ts_hub_id)
+
+        # Find the local machine's Tailscale IP
+        local_ts_ip = ""
+        for t in tailscale_devices:
+            if t["hostname"] == "agentserver" or t["ip"] == local_ip:
+                local_ts_ip = t["ip"]
+                break
+
+        for t in tailscale_devices:
+            ip = t["ip"]
+            if ip in seen_ips:
+                # Already in the graph (same device in LAN and Tailscale)
+                # Relabel if it's the local server
+                for n in nodes:
+                    if n["id"] == ip:
+                        n["label"] = f"{t['hostname']} ({ip})"
+                        if t["os"]:
+                            n["title"] += f"<br>Tailscale OS: {t['os']}"
+                continue
+
+            seen_ips.add(ip)
+            hostname = t["hostname"]
+            ts_os = t["os"]
+            online = t["online"]
+            status_label = "online" if online else "offline"
+
+            shape = "dot"
+            size = 18
+            group = "computer"
+            if ts_os == "linux":
+                group = "server"
+                shape = "diamond"
+                size = 20
+            elif ts_os == "android":
+                group = "mobile"
+                shape = "box"
+                size = 18
+            elif ts_os == "windows":
+                group = "computer"
+                shape = "dot"
+                size = 18
+
+            title = (
+                f"<b>{hostname}</b><br>"
+                f"Tailscale IP: {ip}<br>"
+                f"OS: {ts_os}<br>"
+                f"Status: {status_label}"
+            )
+            label = f"{hostname} ({ip})"
+            color = "#3fb950" if online else "#8b949e"
+
+            nodes.append({
+                "id": ip,
+                "label": label,
+                "ip": ip,
+                "mac": "",
+                "vendor": "Tailscale",
+                "group": group,
+                "title": title,
+                "shape": shape,
+                "size": size,
+                "color": color,
+            })
+
+            # Edge to Tailscale hub
+            edges.append({
+                "from": ip,
+                "to": ts_hub_id,
+                "label": "Tailscale" if t == tailscale_devices[0] else "",
+                "dashes": True,
+                "color": {"color": "#58a6ff", "opacity": 0.5},
+            })
 
     return {"nodes": nodes, "edges": edges}

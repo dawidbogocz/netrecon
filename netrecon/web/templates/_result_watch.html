@@ -40,23 +40,6 @@
     </table>
     {% endif %}
 
-    {% if result.banner_changes %}
-    <h4 style="color:#d29922; font-size:0.9rem; margin-top:1rem; margin-bottom:0.5rem;">Banner Changes</h4>
-    <table class="result-table">
-        <thead><tr><th>IP</th><th>Port</th><th>Old Banner</th><th>New Banner</th></tr></thead>
-        <tbody>
-            {% for bc in result.banner_changes %}
-            <tr>
-                <td>{{ bc.ip }}</td>
-                <td>{{ bc.port }}</td>
-                <td style="color:#8b949e; font-size:0.8rem;">{{ bc.old_banner[:40] }}</td>
-                <td style="color:#3fb950; font-size:0.8rem;">{{ bc.new_banner[:40] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
-
     {% if result.new_hosts %}
     <h4 style="color:#3fb950; font-size:0.9rem; margin-bottom:0.5rem;">New Devices</h4>
     <table class="result-table">

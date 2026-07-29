@@ -2,7 +2,12 @@
 
 Extends the basic ping-only NetworkWatcher with per-host port scanning,
 banner grabbing, OS fingerprinting, and stateful change detection
-(port opens/closes, banner changes, OS changes).
+that only alerts on meaningful events:
+  - Host joins/leaves the network
+  - Port opens/closes on a known host
+
+Banner and OS fingerprint changes are stored for the web UI but
+NEVER trigger Discord alerts (too noisy).
 
 Usage:
     from netrecon.enhanced_watch import EnhancedWatcher
@@ -34,15 +39,17 @@ TOP_PORTS = [
 
 
 class EnhancedWatcher:
-    """Deep network watcher with per-host port/banner/OS tracking.
+    """Deep network watcher — only alerts on meaningful changes.
 
-    Each scan cycle:
-      1. Ping sweep the target range
-      2. For each alive host: scan top 20 ports, grab banners, fingerprint OS
-      3. Compare with previous snapshot
-      4. Save current snapshot to DB
-      5. Return change report (join/leave, port opened/closed, banner changed, OS changed)
-      6. Send rich Discord summary if webhook configured
+    Discord alerts are limited to:
+      - New device joined the network
+      - Device went offline
+      - Port opened on a known host
+      - Port closed on a known host
+
+    Banner and OS fingerprint data is collected for the web UI/DB
+    but NEVER triggers alerts (too much noise from HTTP Date headers,
+    SSH key exchange material, etc.).
     """
 
     def __init__(
@@ -127,18 +134,16 @@ class EnhancedWatcher:
     def _do_enhanced_scan(self) -> dict:
         """Perform a single enhanced scan cycle.
 
+        Alerts ONLY on:
+          - New hosts (joined since last scan)
+          - Gone hosts (went offline since last scan)
+          - Port opens/closes (service appeared/disappeared)
+
+        Banner and OS changes are stored but never alerted on.
+
         Returns:
-            Change report dict with:
-                - scan_number, timestamp, target
-                - total_hosts, hosts (list of host detail dicts)
-                - new_hosts, gone_hosts (IP lists)
-                - port_changes: [{ip, port, state, service, old_state}]
-                - banner_changes: [{ip, port, old_banner, new_banner, service}]
-                - os_changes: [{ip, old_os, new_os}]
-                - has_changes: bool
-                - scan_id: str
+            Change report dict
         """
-        # Collect all hosts via ping sweep
         hosts = ping.ping_sweep(self.target, timeout=self.timeout, workers=self.workers)
         current = set(hosts)
 
@@ -148,24 +153,21 @@ class EnhancedWatcher:
         scan_id = str(uuid.uuid4())[:12]
         now = datetime.now(timezone.utc).isoformat()
 
-        # Deep scan each alive host
         host_details: list[dict] = []
         port_changes: list[dict] = []
-        banner_changes: list[dict] = []
-        os_changes: list[dict] = []
 
         for ip in sorted(current):
             host_info = self._scan_host(ip, scan_id)
             host_details.append(host_info)
 
-            # Get previous snapshot for comparison
+            # Compare port states against previous snapshot
             prev = netrecon_db.get_latest_snapshot(self.target, ip)
 
             if prev and prev.get("alive"):
                 previous_ports = prev.get("ports") or {}
                 current_ports = host_info.get("ports") or {}
 
-                # Detect port opens
+                # Detect port opens — a port that was closed/missing is now open
                 for port_str, info in current_ports.items():
                     if info.get("state") == "open":
                         old = previous_ports.get(port_str)
@@ -175,18 +177,9 @@ class EnhancedWatcher:
                                 "port": int(port_str),
                                 "state": "opened",
                                 "service": info.get("service", ""),
-                                "banner": info.get("banner", ""),
-                            })
-                        elif old.get("banner") and self._normalize_banner(old.get("banner", "")) != self._normalize_banner(info.get("banner", "")):
-                            banner_changes.append({
-                                "ip": ip,
-                                "port": int(port_str),
-                                "service": info.get("service", ""),
-                                "old_banner": self._normalize_banner(old.get("banner", "")),
-                                "new_banner": self._normalize_banner(info.get("banner", "")),
                             })
 
-                # Detect port closes
+                # Detect port closes — a port that was open is now closed/missing
                 for port_str, old_info in previous_ports.items():
                     if old_info.get("state") == "open":
                         cur = current_ports.get(port_str)
@@ -196,21 +189,7 @@ class EnhancedWatcher:
                                 "port": int(port_str),
                                 "state": "closed",
                                 "service": old_info.get("service", ""),
-                                "old_banner": old_info.get("banner", ""),
                             })
-
-                # Detect OS changes
-                prev_os = prev.get("os")
-                curr_os = host_info.get("os")
-                if prev_os and curr_os:
-                    prev_name = prev_os.get("name", "Unknown") if isinstance(prev_os, dict) else str(prev_os)
-                    curr_name = curr_os.get("name", "Unknown") if isinstance(curr_os, dict) else str(curr_os)
-                    if prev_name != curr_name and prev_name != "Unknown":
-                        os_changes.append({
-                            "ip": ip,
-                            "old_os": prev_name,
-                            "new_os": curr_name,
-                        })
 
         # Save all snapshots
         for info in host_details:
@@ -223,18 +202,12 @@ class EnhancedWatcher:
                 os_info=info.get("os"),
             )
 
-        # Mark gone hosts as offline
         for ip in gone_hosts:
             netrecon_db.save_snapshot(
-                scan_id=scan_id,
-                target=self.target,
-                ip=ip,
-                alive=False,
-                ports=None,
-                os_info=None,
+                scan_id=scan_id, target=self.target, ip=ip,
+                alive=False, ports=None, os_info=None,
             )
 
-        # Save events
         for ip in new_hosts:
             netrecon_db.save_event("join", ip, f"Device {ip} joined the network")
         for ip in gone_hosts:
@@ -242,7 +215,7 @@ class EnhancedWatcher:
 
         self.previous_hosts = current
 
-        has_changes = bool(new_hosts or gone_hosts or port_changes or banner_changes or os_changes)
+        has_changes = bool(new_hosts or gone_hosts or port_changes)
 
         return {
             "scan_id": scan_id,
@@ -254,13 +227,14 @@ class EnhancedWatcher:
             "new_hosts": new_hosts,
             "gone_hosts": gone_hosts,
             "port_changes": port_changes,
-            "banner_changes": banner_changes,
-            "os_changes": os_changes,
             "has_changes": has_changes,
         }
 
     def _scan_host(self, ip: str, scan_id: str) -> dict:
         """Deep scan a single host: ports, banners, OS fingerprint.
+
+        Banners and OS are stored for the web UI but never compared
+        across scans for alerting purposes.
 
         Args:
             ip: Host IP address
@@ -271,29 +245,23 @@ class EnhancedWatcher:
         """
         info: dict = {"ip": ip, "alive": True, "ports": {}, "os": None}
 
-        # Port scan
         port_results = scan.tcp_connect_scan(ip, self.scan_ports, timeout=self.timeout, workers=min(self.workers, 20))
 
-        # Build ports dict
         ports_dict: dict[str, dict] = {}
         for pr in port_results:
             port_str = str(pr["port"])
             entry: dict = {"state": pr.get("state", "closed"), "service": pr.get("service", "")}
             if pr.get("state") == "open":
-                # Grab banner
                 try:
                     banner_results = banner.grab_banners(ip, [pr["port"]], timeout=self.timeout)
                     if banner_results and banner_results[0].get("banner"):
-                        entry["banner"] = self._normalize_banner(
-                            banner_results[0]["banner"]
-                        )[:200]
+                        entry["banner"] = self._normalize_banner(banner_results[0]["banner"])[:200]
                 except Exception as e:
                     logger.debug("Banner grab for %s:%d failed: %s", ip, pr["port"], e)
             ports_dict[port_str] = entry
 
         info["ports"] = ports_dict
 
-        # OS fingerprint
         try:
             os_result = fingerprint.fingerprint_os(ip, timeout=self.timeout)
             if os_result and os_result.get("os_guess"):
@@ -308,13 +276,11 @@ class EnhancedWatcher:
 
     @staticmethod
     def _normalize_banner(banner: str) -> str:
-        """Strip dynamic content from service banners so comparison is stable.
+        """Clean a banner for display in the web UI.
 
-        Removes:
-        - HTTP Date, Last-Modified, Expires, Age, Set-Cookie headers
-        - SSH key-exchange lines (keep only the version line)
-        - JSON numeric values (sequence IDs, counters, etc.)
-        - Trailing CR/LF/whitespace
+        Strips dynamic content so the stored banner is readable.
+        This is for display only — banner content is NEVER compared
+        across scans for alerting.
         """
         if not banner:
             return ""
@@ -331,28 +297,15 @@ class EnhancedWatcher:
         if any(l.strip().startswith('SSH-') for l in lines):
             return lines[0].strip()
 
-        # For JSON responses, normalize by stripping numeric values
-        # so sequence IDs and counters don't trigger false changes
-        stripped = cleaned.strip()
-        if stripped.startswith('{') or stripped.startswith('['):
-            # Replace all numeric values (including in strings like "seq":1234)
-            stripped = re.sub(r':\s*\d+(\.\d+)?', ':0', stripped)
-            # Replace numbers in quoted strings that look like IDs/sequences
-            stripped = re.sub(r'"_?\w*[Ii][Dd]"\s*:\s*"?\d+"?', '"id":0', stripped)
-
         # Remove empty lines, join remaining
-        lines = stripped.split('\n')
         cleaned = '\n'.join(l.rstrip() for l in lines if l.strip())
         return cleaned.strip()
 
     def _send_discord_summary(self, report: dict) -> bool:
-        """Send a rich Discord embed summarizing the scan cycle.
+        """Send a Discord embed with ONLY meaningful changes.
 
-        Args:
-            report: Change report dict from _do_enhanced_scan
-
-        Returns:
-            True if sent successfully
+        No banner or OS changes — those are too noisy.
+        Only: host joins/leaves and port opens/closes.
         """
         if not self.discord_webhook:
             return False
@@ -377,36 +330,16 @@ class EnhancedWatcher:
         for pc in report["port_changes"]:
             total_change_count += 1
             if pc["state"] == "opened":
-                banner_str = f" ({pc.get('banner', '')[:60]})" if pc.get("banner") else ""
                 lines.append(
-                    f"🟠 **Port opened:** {pc['ip']} → {pc['port']} "
-                    f"({pc.get('service', 'unknown')}){banner_str}"
+                    f"🟠 **Port opened:** {pc['ip']} → {pc['port']} ({pc.get('service', 'unknown')})"
                 )
             elif pc["state"] == "closed":
                 lines.append(
-                    f"🔵 **Port closed:** {pc['ip']} → {pc['port']} "
-                    f"({pc.get('service', 'unknown')})"
+                    f"🔵 **Port closed:** {pc['ip']} → {pc['port']} ({pc.get('service', 'unknown')})"
                 )
-
-        for bc in report["banner_changes"]:
-            total_change_count += 1
-            old = bc.get("old_banner", "")[:60]
-            new = bc.get("new_banner", "")[:60]
-            lines.append(
-                f"🟡 **Banner change:** {bc['ip']}:{bc['port']} "
-                f"\"{old}\" → \"{new}\""
-            )
-
-        for oc in report["os_changes"]:
-            total_change_count += 1
-            lines.append(
-                f"🟣 **OS change:** {oc['ip']} "
-                f"{oc['old_os']} → {oc['new_os']}"
-            )
 
         description = "\n".join(lines)
 
-        # Build port summary
         total_open_ports = 0
         for host in report["hosts"]:
             for p, info in (host.get("ports") or {}).items():
@@ -439,20 +372,7 @@ def run_enhanced_watch(
     webhook: str | None = None,
     on_scan: Callable | None = None,
 ) -> list[dict]:
-    """Convenience function to create and run an EnhancedWatcher.
-
-    Args:
-        target: Network target (CIDR or IP range)
-        interval: Seconds between scans
-        iterations: Number of scans (0 = infinite)
-        timeout: Per-host probe timeout
-        workers: Max concurrent workers
-        webhook: Optional Discord webhook URL
-        on_scan: Optional callback after each scan
-
-    Returns:
-        List of change report dicts
-    """
+    """Convenience function to create and run an EnhancedWatcher."""
     watcher = EnhancedWatcher(
         target,
         discord_webhook=webhook,

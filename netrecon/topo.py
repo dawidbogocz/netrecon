@@ -494,76 +494,82 @@ def build_topology(
 
     # ── Tailscale devices ──────────────────────────────────────────
     if tailscale_devices:
-        # Create a virtual "Tailscale Cloud" hub node
-        ts_hub_id = "tailscale-cloud"
-        if ts_hub_id not in seen_ips:
-            nodes.append({
-                "id": ts_hub_id,
-                "label": "Tailscale Mesh",
-                "ip": "100.x.x.x",
-                "mac": "",
-                "vendor": "Tailscale",
-                "group": "network",
-                "title": "<b>Tailscale Mesh</b><br>Virtual overlay network",
-                "shape": "hexagon",
-                "size": 28,
-                "color": "#58a6ff",
-            })
-            seen_ips.add(ts_hub_id)
-
         # Find the local machine's Tailscale IP
         local_ts_ip = ""
         for t in tailscale_devices:
-            if t["hostname"] == "agentserver" or t["ip"] == local_ip:
+            if t["ip"] == local_ip or t["hostname"] == "agentserver":
                 local_ts_ip = t["ip"]
                 break
+
+        # Try to match each Tailscale device to a LAN device by hostname
+        def _find_lan_match(ts_device: dict) -> str | None:
+            """Find a LAN IP that matches a Tailscale device."""
+            ts_hostname = ts_device["hostname"].lower()
+            ts_ip = ts_device["ip"]
+
+            # 1. This server: always connect LAN ↔ Tailscale
+            if ts_ip == local_ts_ip and local_ip:
+                return local_ip
+
+            # 2. Check if any LAN device's hostname matches
+            for d in devices:
+                lan_hostname = d.get("hostname", "").lower()
+                lan_ip = d["ip"]
+                if lan_hostname and (lan_hostname == ts_hostname or ts_hostname.startswith(lan_hostname) or lan_hostname.startswith(ts_hostname)):
+                    return lan_ip
+
+            # 3. Check if the hostname appears in any node label
+            for n in nodes:
+                n_label = n.get("label", "").lower()
+                n_id = n.get("id", "")
+                if ts_hostname in n_label and n_id not in (local_ip, gateway or ""):
+                    return n_id
+
+            return None
+
+        # Track which Tailscale devices are matched to LAN
+        matched_lan_ips: set[str] = set()
+        ts_hub_needed = False
 
         for t in tailscale_devices:
             ip = t["ip"]
             if ip in seen_ips:
-                # Already in the graph (same device in LAN and Tailscale)
-                # Relabel if it's the local server
-                for n in nodes:
-                    if n["id"] == ip:
-                        n["label"] = f"{t['hostname']} ({ip})"
-                        if t["os"]:
-                            n["title"] += f"<br>Tailscale OS: {t['os']}"
                 continue
 
-            seen_ips.add(ip)
             hostname = t["hostname"]
             ts_os = t["os"]
             online = t["online"]
             status_label = "online" if online else "offline"
+            lan_match = _find_lan_match(t)
 
             shape = "dot"
-            size = 18
+            size = 16
             group = "computer"
             if ts_os == "linux":
                 group = "server"
                 shape = "diamond"
-                size = 20
+                size = 18
             elif ts_os == "android":
                 group = "mobile"
                 shape = "box"
-                size = 18
+                size = 16
             elif ts_os == "windows":
                 group = "computer"
                 shape = "dot"
-                size = 18
+                size = 16
 
+            color = "#3fb950" if online else "#8b949e"
             title = (
                 f"<b>{hostname}</b><br>"
                 f"Tailscale IP: {ip}<br>"
                 f"OS: {ts_os}<br>"
                 f"Status: {status_label}"
             )
-            label = f"{hostname} ({ip})"
-            color = "#3fb950" if online else "#8b949e"
 
+            seen_ips.add(ip)
             nodes.append({
                 "id": ip,
-                "label": label,
+                "label": hostname,
                 "ip": ip,
                 "mac": "",
                 "vendor": "Tailscale",
@@ -574,13 +580,49 @@ def build_topology(
                 "color": color,
             })
 
-            # Edge to Tailscale hub
-            edges.append({
-                "from": ip,
-                "to": ts_hub_id,
-                "label": "Tailscale" if t == tailscale_devices[0] else "",
-                "dashes": True,
-                "color": {"color": "#58a6ff", "opacity": 0.5},
-            })
+            if lan_match:
+                # Connect directly to the matching LAN device
+                matched_lan_ips.add(lan_match)
+                edges.append({
+                    "from": ip,
+                    "to": lan_match,
+                    "label": "Tailscale",
+                    "dashes": True,
+                    "color": {"color": "#58a6ff", "opacity": 0.5},
+                })
+                # Also update the LAN node's title to show Tailscale IP
+                for n in nodes:
+                    if n["id"] == lan_match:
+                        n["title"] += f"<br>Tailscale: {ip}"
+                        n["label"] = n.get("label", "").replace(f" ({lan_match})", "") + f" ({lan_match})"
+                        break
+            else:
+                # Tailscale-only device — needs the hub
+                ts_hub_needed = True
+                ts_hub_id = "tailscale-cloud"
+
+                # Create hub on first use
+                if ts_hub_id not in seen_ips:
+                    nodes.append({
+                        "id": ts_hub_id,
+                        "label": "Tailscale Mesh",
+                        "ip": "100.x.x.x",
+                        "mac": "",
+                        "vendor": "Tailscale",
+                        "group": "network",
+                        "title": "<b>Tailscale Mesh</b><br>Virtual overlay network",
+                        "shape": "hexagon",
+                        "size": 28,
+                        "color": "#58a6ff",
+                    })
+                    seen_ips.add(ts_hub_id)
+
+                edges.append({
+                    "from": ip,
+                    "to": ts_hub_id,
+                    "label": "",
+                    "dashes": True,
+                    "color": {"color": "#58a6ff", "opacity": 0.5},
+                })
 
     return {"nodes": nodes, "edges": edges}

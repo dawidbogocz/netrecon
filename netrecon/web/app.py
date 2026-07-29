@@ -63,7 +63,7 @@ async def home(request: Request):
 @app.get("/history", response_class=HTMLResponse)
 async def history_partial(request: Request):
     recent = netrecon_db.get_recent_scans(limit=15)
-    html = _render("_history.html", request=request, scans=recent)
+    html = _render("_history.html", request=request, result=recent)
     return HTMLResponse(html)
 
 

@@ -351,22 +351,26 @@ async def _run_watch_with_progress(scan_id: str, target: str, interval: int, ite
     try:
         _scan_progress[scan_id] = {"status": "running", "mode": "watch", "target": target, "progress": 0, "message": "Starting watch..."}
 
+        # Create watcher ONCE so previous_hosts persists across iterations
+        if enhanced:
+            watcher = netrecon_enhanced_watch.EnhancedWatcher(
+                target, discord_webhook=webhook, timeout=timeout,
+            )
+        else:
+            watcher = netrecon_watch.NetworkWatcher(
+                target, discord_webhook=webhook, timeout=timeout,
+            )
+
         results = []
         for i in range(iterations):
             await _update_progress(scan_id, message=f"Scan {i+1}/{iterations}...", progress=int((i / iterations) * 90))
 
             if enhanced:
-                watcher = netrecon_enhanced_watch.EnhancedWatcher(
-                    target, discord_webhook=webhook, timeout=timeout,
-                )
                 scan_result = watcher._do_enhanced_scan()
-                # Send Discord summary if webhook configured and changes detected
-                if webhook and scan_result.get("has_changes"):
+                # Only send Discord when things actually change
+                if webhook and scan_result.get("has_changes") and i > 0:
                     watcher._send_discord_summary(scan_result)
             else:
-                watcher = netrecon_watch.NetworkWatcher(
-                    target, discord_webhook=webhook, timeout=timeout,
-                )
                 scan_result = watcher._do_scan()
 
             results.append(scan_result)

@@ -6,6 +6,24 @@
     <title>netrecon — Network Reconnaissance Dashboard</title>
     <link rel="stylesheet" href="/static/app.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+    <style>
+        #topology-container { min-height: 500px; position: relative; }
+        #topology-loading { text-align: center; padding: 3rem; color: #8b949e; }
+        #topology-graph { width: 100%; height: 500px; border: 1px solid #30363d; border-radius: 8px; background: #0d1117; }
+        #topology-legend { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; font-size: 0.8rem; color: #8b949e; }
+        #topology-legend span { display: flex; align-items: center; gap: 0.3rem; }
+        .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+        .legend-dot.server { background: #58a6ff; }
+        .legend-dot.network { background: #d29922; }
+        .legend-dot.mobile { background: #3fb950; }
+        .legend-dot.iot { background: #f85149; }
+        .legend-dot.computer { background: #8b949e; }
+        .topo-stats { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
+        .topo-stat { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.5rem 1rem; text-align: center; flex: 1; }
+        .topo-stat .num { font-size: 1.2rem; font-weight: bold; color: #58a6ff; }
+        .topo-stat .lbl { font-size: 0.75rem; color: #8b949e; }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -20,6 +38,7 @@
                 <button class="tab-btn" data-tab="dns" onclick="switchTab('dns')">DNS</button>
                 <button class="tab-btn" data-tab="geo" onclick="switchTab('geo')">Geo</button>
                 <button class="tab-btn" data-tab="watch" onclick="switchTab('watch')">Watch</button>
+                <button class="tab-btn" data-tab="topology" onclick="switchTab('topology')">Topology</button>
             </div>
 
             <!-- Scan Tab -->
@@ -97,6 +116,13 @@
                 </form>
                 <div id="spinner-watch" class="htmx-indicator"><span class="spinner"></span>Watching network...</div>
             </div>
+
+            <!-- Topology Tab -->
+            <div class="tab-pane" id="tab-topology">
+                <div id="topology-container">
+                    <div id="topology-loading"><span class="spinner"></span>Discovering network topology...</div>
+                </div>
+            </div>
         </section>
 
         <div class="layout">
@@ -118,6 +144,126 @@
             document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
             document.querySelector('.tab-btn[data-tab="' + name + '"]').classList.add('active');
             document.getElementById('tab-' + name).classList.add('active');
+
+            if (name === 'topology' && !window._topologyLoaded) {
+                loadTopology();
+            }
+        }
+
+        function loadTopology() {
+            window._topologyLoaded = true;
+            var container = document.getElementById('topology-container');
+            container.innerHTML = '<div id="topology-loading"><span class="spinner"></span>Discovering network topology...</div>';
+
+            fetch('/topology')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var nodes = new vis.DataSet(data.nodes.map(function(n) {
+                        // Shape mapping
+                        var shapeMap = {
+                            'network': 'hexagon',
+                            'server': 'diamond',
+                            'mobile': 'box',
+                            'iot': 'box',
+                            'computer': 'dot',
+                            'unknown': 'dot',
+                            'apple': 'dot',
+                        };
+                        var colorMap = {
+                            'network': '#d29922',
+                            'server': '#58a6ff',
+                            'mobile': '#3fb950',
+                            'iot': '#f85149',
+                            'computer': '#8b949e',
+                            'unknown': '#8b949e',
+                            'apple': '#c9d1d9',
+                        };
+                        return {
+                            id: n.id,
+                            label: n.label,
+                            title: n.title,
+                            shape: n.shape || shapeMap[n.group] || 'dot',
+                            color: {
+                                background: colorMap[n.group] || '#8b949e',
+                                border: '#30363d',
+                            },
+                            font: { color: '#c9d1d9', size: 12 },
+                            borderWidth: 2,
+                            size: n.size || 18,
+                        };
+                    }));
+
+                    var edges = new vis.DataSet(data.edges.map(function(e) {
+                        return {
+                            from: e.from,
+                            to: e.to,
+                            label: e.label || '',
+                            color: { color: '#30363d', opacity: 0.6 },
+                            width: 1,
+                            arrows: { to: { enabled: false } },
+                        };
+                    }));
+
+                    var visContainer = document.getElementById('topology-container');
+                    var statsHtml = '<div class="topo-stats">' +
+                        '<div class="topo-stat"><div class="num">' + data.nodes.length + '</div><div class="lbl">Devices</div></div>' +
+                        '<div class="topo-stat"><div class="num">' + data.edges.length + '</div><div class="lbl">Connections</div></div>' +
+                        '</div>';
+
+                    visContainer.innerHTML = statsHtml +
+                        '<div id="topology-graph"></div>' +
+                        '<div id="topology-legend">' +
+                        '<span><span class="legend-dot server"></span> Server</span>' +
+                        '<span><span class="legend-dot network"></span> Network</span>' +
+                        '<span><span class="legend-dot mobile"></span> Mobile</span>' +
+                        '<span><span class="legend-dot iot"></span> IoT</span>' +
+                        '<span><span class="legend-dot computer"></span> Computer</span>' +
+                        '</div>';
+
+                    var options = {
+                        nodes: { borderWidth: 2, font: { color: '#c9d1d9', size: 12 } },
+                        edges: { color: '#30363d', width: 1 },
+                        physics: {
+                            solver: 'forceAtlas2Based',
+                            forceAtlas2Based: {
+                                gravitationalConstant: -60,
+                                centralGravity: 0.005,
+                                springLength: 200,
+                                springConstant: 0.02,
+                                damping: 0.4,
+                            },
+                            stabilization: { iterations: 200 },
+                        },
+                        interaction: {
+                            hover: true,
+                            tooltipDelay: 100,
+                            navigationButtons: true,
+                            keyboard: true,
+                        },
+                        layout: { randomSeed: 42 },
+                        background: '#0d1117',
+                    };
+
+                    var graph = new vis.Network(
+                        document.getElementById('topology-graph'),
+                        { nodes: nodes, edges: edges },
+                        options
+                    );
+
+                    graph.on('click', function(params) {
+                        if (params.nodes.length > 0) {
+                            var nodeId = params.nodes[0];
+                            var nodeData = data.nodes.find(function(n) { return n.id === nodeId; });
+                            if (nodeData && nodeData.title) {
+                                // Title is already HTML from the API
+                            }
+                        }
+                    });
+                })
+                .catch(function(err) {
+                    document.getElementById('topology-container').innerHTML =
+                        '<div class="error-panel"><h3>Topology Discovery Failed</h3><p>' + err.message + '</p></div>';
+                });
         }
     </script>
 </body>

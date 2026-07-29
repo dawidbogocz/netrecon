@@ -229,6 +229,16 @@ aside h2 {
 
 .failed { color: #f85149; }
 
+.error-panel {
+    background: #161b22;
+    border: 1px solid #f85149;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+.error-panel h3 { color: #f85149; margin-bottom: 0.5rem; }
+.error-panel p { color: #c9d1d9; font-size: 0.85rem; }
+
 /* ── Tabs ── */
 .tabs {
     display: flex;

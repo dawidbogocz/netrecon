@@ -23,6 +23,7 @@ from netrecon import dns as netrecon_dns
 from netrecon import geo as netrecon_geo
 from netrecon import watch as netrecon_watch
 from netrecon import enhanced_watch as netrecon_enhanced_watch
+from netrecon import topo as netrecon_topo
 from netrecon import db as netrecon_db
 from netrecon.scan import parse_ports
 
@@ -396,6 +397,19 @@ async def _run_watch_with_progress(scan_id: str, target: str, interval: int, ite
         logger.exception("Watch scan failed")
         html = _render("_result_watch.html", target=target, error=str(e), scan_id=scan_id)
         _scan_progress[scan_id] = {"status": "complete", "html": html}
+
+
+# ── Internal Scan Runners ─────────────────────────────────────────
+
+
+# ── Topology ──────────────────────────────────────────────────────
+
+
+@app.get("/topology", response_class=JSONResponse)
+async def topology_endpoint():
+    """Return the current network topology as JSON for vis.js."""
+    graph = netrecon_topo.build_topology()
+    return JSONResponse(graph)
 
 
 # ── Internal Scan Runners ─────────────────────────────────────────

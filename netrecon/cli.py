@@ -37,7 +37,7 @@ ENHANCED_WATCH = None
 
 
 def _lazy_import():
-    global PING, SCAN, BANNER, FINGERPRINT, PHISH, OUTPUT, DNS, GEO, WATCH, REPORT
+    global PING, SCAN, BANNER, FINGERPRINT, PHISH, OUTPUT, DNS, GEO, WATCH, REPORT, ENHANCED_WATCH
     if PING is not None:
         return
     from netrecon import ping as _p

@@ -51,7 +51,10 @@ def send_webhook(
         req = urllib.request.Request(
             webhook_url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "netrecon/0.2",
+            },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:

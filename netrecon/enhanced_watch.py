@@ -13,6 +13,7 @@ Usage:
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Callable
@@ -176,13 +177,13 @@ class EnhancedWatcher:
                                 "service": info.get("service", ""),
                                 "banner": info.get("banner", ""),
                             })
-                        elif old.get("banner") and old.get("banner") != info.get("banner"):
+                        elif old.get("banner") and self._normalize_banner(old.get("banner", "")) != self._normalize_banner(info.get("banner", "")):
                             banner_changes.append({
                                 "ip": ip,
                                 "port": int(port_str),
                                 "service": info.get("service", ""),
-                                "old_banner": old.get("banner", ""),
-                                "new_banner": info.get("banner", ""),
+                                "old_banner": self._normalize_banner(old.get("banner", "")),
+                                "new_banner": self._normalize_banner(info.get("banner", "")),
                             })
 
                 # Detect port closes
@@ -283,7 +284,9 @@ class EnhancedWatcher:
                 try:
                     banner_results = banner.grab_banners(ip, [pr["port"]], timeout=self.timeout)
                     if banner_results and banner_results[0].get("banner"):
-                        entry["banner"] = banner_results[0]["banner"][:200]
+                        entry["banner"] = self._normalize_banner(
+                            banner_results[0]["banner"]
+                        )[:200]
                 except Exception as e:
                     logger.debug("Banner grab for %s:%d failed: %s", ip, pr["port"], e)
             ports_dict[port_str] = entry
@@ -302,6 +305,45 @@ class EnhancedWatcher:
             logger.debug("OS fingerprint for %s failed: %s", ip, e)
 
         return info
+
+    @staticmethod
+    def _normalize_banner(banner: str) -> str:
+        """Strip dynamic content from service banners so comparison is stable.
+
+        Removes:
+        - HTTP Date, Last-Modified, Expires, Age, Set-Cookie headers
+        - SSH key-exchange lines (keep only the version line)
+        - JSON numeric values (sequence IDs, counters, etc.)
+        - Trailing CR/LF/whitespace
+        """
+        if not banner:
+            return ""
+
+        # Strip HTTP headers that change per-request
+        cleaned = re.sub(
+            r'(?im)^(date|last-modified|expires|age|cache-control|set-cookie):\s.*$',
+            '',
+            banner,
+        )
+
+        # For SSH, keep only the first line (version string)
+        lines = cleaned.split('\n')
+        if any(l.strip().startswith('SSH-') for l in lines):
+            return lines[0].strip()
+
+        # For JSON responses, normalize by stripping numeric values
+        # so sequence IDs and counters don't trigger false changes
+        stripped = cleaned.strip()
+        if stripped.startswith('{') or stripped.startswith('['):
+            # Replace all numeric values (including in strings like "seq":1234)
+            stripped = re.sub(r':\s*\d+(\.\d+)?', ':0', stripped)
+            # Replace numbers in quoted strings that look like IDs/sequences
+            stripped = re.sub(r'"_?\w*[Ii][Dd]"\s*:\s*"?\d+"?', '"id":0', stripped)
+
+        # Remove empty lines, join remaining
+        lines = stripped.split('\n')
+        cleaned = '\n'.join(l.rstrip() for l in lines if l.strip())
+        return cleaned.strip()
 
     def _send_discord_summary(self, report: dict) -> bool:
         """Send a rich Discord embed summarizing the scan cycle.

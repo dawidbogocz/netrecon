@@ -15,24 +15,84 @@
         </header>
 
         <section class="scan-form">
-            <form hx-get="/scan" hx-target="#results" hx-trigger="submit" hx-indicator="#spinner">
-                <div class="input-row">
-                    <input type="text" name="target" placeholder="Target (IP, CIDR, or URL)" required>
-                    <select name="mode">
-                        <option value="ping">Ping Sweep</option>
-                        <option value="scan">Port Scan</option>
-                        <option value="banner">Banner Grab</option>
-                        <option value="fingerprint">OS Fingerprint</option>
-                        <option value="phish">Phishing URL Analysis</option>
-                    </select>
-                    <button type="submit">Scan</button>
-                </div>
-                <div class="options-row">
-                    <label>Ports: <input type="text" name="ports" placeholder="22,80,443 or 1-1024"></label>
-                    <label>Timeout: <input type="number" name="timeout" value="2" min="0.5" step="0.5" style="width:70px"></label>
-                </div>
-            </form>
-            <div id="spinner" class="htmx-indicator">Scanning...</div>
+            <div class="tabs" role="tablist">
+                <button class="tab-btn active" data-tab="scan" onclick="switchTab('scan')">Scan</button>
+                <button class="tab-btn" data-tab="dns" onclick="switchTab('dns')">DNS</button>
+                <button class="tab-btn" data-tab="geo" onclick="switchTab('geo')">Geo</button>
+                <button class="tab-btn" data-tab="watch" onclick="switchTab('watch')">Watch</button>
+            </div>
+
+            <!-- Scan Tab -->
+            <div class="tab-pane active" id="tab-scan">
+                <form hx-get="/scan" hx-target="#results" hx-trigger="submit" hx-indicator="#spinner-scan">
+                    <div class="input-row">
+                        <input type="text" name="target" placeholder="Target (IP, CIDR, or URL)" required>
+                        <select name="mode">
+                            <option value="ping">Ping Sweep</option>
+                            <option value="scan">Port Scan</option>
+                            <option value="banner">Banner Grab</option>
+                            <option value="fingerprint">OS Fingerprint</option>
+                            <option value="phish">Phishing URL Analysis</option>
+                        </select>
+                        <button type="submit">Scan</button>
+                    </div>
+                    <div class="options-row">
+                        <label>Ports: <input type="text" name="ports" placeholder="22,80,443 or 1-1024"></label>
+                        <label>Timeout: <input type="number" name="timeout" value="2" min="0.5" step="0.5" style="width:70px"></label>
+                    </div>
+                </form>
+                <div id="spinner-scan" class="htmx-indicator"><span class="spinner"></span>Scanning...</div>
+            </div>
+
+            <!-- DNS Tab -->
+            <div class="tab-pane" id="tab-dns">
+                <form hx-get="/dns" hx-target="#results" hx-trigger="submit" hx-indicator="#spinner-dns">
+                    <div class="input-row">
+                        <input type="text" name="target" placeholder="Domain (e.g. example.com)" required>
+                        <select name="mode">
+                            <option value="lookup">DNS Lookup</option>
+                            <option value="reverse">Reverse DNS</option>
+                            <option value="enum">Subdomain Enumeration</option>
+                        </select>
+                        <button type="submit">Lookup</button>
+                    </div>
+                    <div class="options-row">
+                        <label>Timeout: <input type="number" name="timeout" value="3" min="0.5" step="0.5" style="width:70px"></label>
+                    </div>
+                </form>
+                <div id="spinner-dns" class="htmx-indicator"><span class="spinner"></span>Resolving DNS...</div>
+            </div>
+
+            <!-- Geo Tab -->
+            <div class="tab-pane" id="tab-geo">
+                <form hx-get="/geo" hx-target="#results" hx-trigger="submit" hx-indicator="#spinner-geo">
+                    <div class="input-row">
+                        <input type="text" name="target" placeholder="IP address (e.g. 8.8.8.8)" required>
+                        <button type="submit">Geolocate</button>
+                    </div>
+                    <div class="options-row">
+                        <label>Timeout: <input type="number" name="timeout" value="3" min="0.5" step="0.5" style="width:70px"></label>
+                    </div>
+                </form>
+                <div id="spinner-geo" class="htmx-indicator"><span class="spinner"></span>Looking up geolocation...</div>
+            </div>
+
+            <!-- Watch Tab -->
+            <div class="tab-pane" id="tab-watch">
+                <form hx-get="/watch" hx-target="#results" hx-trigger="submit" hx-indicator="#spinner-watch">
+                    <div class="input-row">
+                        <input type="text" name="target" placeholder="CIDR or IP range (e.g. 192.168.0.1-254)" required>
+                        <button type="submit">Start Watch</button>
+                    </div>
+                    <div class="options-row">
+                        <label>Interval (s): <input type="number" name="interval" value="60" min="10" step="10" style="width:70px"></label>
+                        <label>Iterations: <input type="number" name="iterations" value="5" min="1" max="100" style="width:70px" placeholder="0=infinite"></label>
+                        <label>Timeout: <input type="number" name="timeout" value="1" min="0.5" step="0.5" style="width:70px"></label>
+                        <label>Discord Webhook: <input type="text" name="webhook" placeholder="Optional Discord webhook URL" style="width:250px"></label>
+                    </div>
+                </form>
+                <div id="spinner-watch" class="htmx-indicator"><span class="spinner"></span>Watching network...</div>
+            </div>
         </section>
 
         <div class="layout">
@@ -47,5 +107,14 @@
             </aside>
         </div>
     </div>
+
+    <script>
+        function switchTab(name) {
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
+            document.querySelector('.tab-btn[data-tab="' + name + '"]').classList.add('active');
+            document.getElementById('tab-' + name).classList.add('active');
+        }
+    </script>
 </body>
 </html>

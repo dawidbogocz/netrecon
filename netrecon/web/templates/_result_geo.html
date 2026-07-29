@@ -1,0 +1,37 @@
+<div class="result-section">
+    <h3>Geolocation — {{ target }}</h3>
+    {% if error %}
+    <p class="failed">{{ error }}</p>
+    {% elif result %}
+    <div class="geo-card">
+        <div class="full-width"><span class="label">IP:</span> <span class="value">{{ result.ip }}</span></div>
+        <div><span class="label">Country:</span> <span class="value">{{ result.country }}</span></div>
+        <div><span class="label">Region:</span> <span class="value">{{ result.region }}</span></div>
+        <div><span class="label">City:</span> <span class="value">{{ result.city }}</span></div>
+        <div><span class="label">ISP:</span> <span class="value">{{ result.isp }}</span></div>
+        <div class="full-width"><span class="label">Organization:</span> <span class="value">{{ result.org }}</span></div>
+        <div class="full-width"><span class="label">ASN:</span> <span class="value">{{ result.asn }}</span></div>
+        <div><span class="label">Latitude:</span> <span class="value">{{ result.lat }}</span></div>
+        <div><span class="label">Longitude:</span> <span class="value">{{ result.lon }}</span></div>
+        <div class="full-width"><span class="label">Timezone:</span> <span class="value">{{ result.timezone }}</span></div>
+    </div>
+    {% if result.lat and result.lon %}
+    <div id="geo-map-{{ scan_id }}" style="height:300px; margin-top:0.5rem; border-radius:8px; border:1px solid #30363d;"></div>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        setTimeout(function() {
+            var map = L.map('geo-map-{{ scan_id }}').setView([{{ result.lat }}, {{ result.lon }}], 10);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 18
+            }).addTo(map);
+            L.marker([{{ result.lat }}, {{ result.lon }}]).addTo(map)
+                .bindPopup('{{ result.city }}, {{ result.country }}<br>{{ result.isp }}');
+        }, 100);
+    </script>
+    {% endif %}
+    {% else %}
+    <p class="placeholder">No geolocation data for {{ target }}.</p>
+    {% endif %}
+</div>

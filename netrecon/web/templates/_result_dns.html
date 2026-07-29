@@ -1,0 +1,27 @@
+<div class="result-section">
+    <h3>DNS Lookup — {{ target }}</h3>
+    {% if error %}
+    <p class="failed">{{ error }}</p>
+    {% else %}
+    {% if result %}
+        {% for rtype, records in result.items() %}
+        <h4 style="color:#58a6ff; margin-top:1rem; font-size:0.9rem;">{{ rtype }} Records</h4>
+        <table class="result-table">
+            <thead>
+                <tr><th>Value</th><th>TTL</th></tr>
+            </thead>
+            <tbody>
+                {% for val, ttl in records %}
+                <tr>
+                    <td>{{ val }}</td>
+                    <td style="color:#8b949e;">{{ ttl }}s</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endfor %}
+    {% else %}
+        <p class="placeholder">No records found for {{ target }}.</p>
+    {% endif %}
+    {% endif %}
+</div>

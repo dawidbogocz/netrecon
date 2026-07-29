@@ -1,0 +1,24 @@
+<div class="result-section">
+    <h3>Subdomain Enumeration — {{ target }}</h3>
+    {% if error %}
+    <p class="failed">{{ error }}</p>
+    {% elif result %}
+    <p>{{ result|length }} subdomain(s) found.</p>
+    <table class="result-table">
+        <thead>
+            <tr><th>Subdomain</th><th>Full Domain</th><th>IPs</th></tr>
+        </thead>
+        <tbody>
+            {% for sub in result %}
+            <tr>
+                <td>{{ sub.subdomain }}</td>
+                <td style="color:#58a6ff;">{{ sub.full_domain }}</td>
+                <td>{{ sub.ips | join(', ') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="placeholder">No subdomains found for {{ target }}.</p>
+    {% endif %}
+</div>

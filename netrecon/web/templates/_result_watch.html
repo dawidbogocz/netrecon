@@ -1,0 +1,63 @@
+<div class="result-section">
+    <h3>Watch Mode — {{ target }}</h3>
+    {% if error %}
+    <p class="failed">{{ error }}</p>
+    {% elif result %}
+    <div class="watch-summary">
+        <div class="watch-stat">
+            <div class="num">{{ result.total_hosts }}</div>
+            <div class="lbl">Hosts Online</div>
+        </div>
+        <div class="watch-stat">
+            <div class="num" style="color:#3fb950;">{{ result.new_hosts|length }}</div>
+            <div class="lbl">New Devices</div>
+        </div>
+        <div class="watch-stat">
+            <div class="num" style="color:#f85149;">{{ result.gone_hosts|length }}</div>
+            <div class="lbl">Offline</div>
+        </div>
+        <div class="watch-stat">
+            <div class="num">{{ result.scan_number }}</div>
+            <div class="lbl">Scan #</div>
+        </div>
+    </div>
+
+    {% if result.new_hosts %}
+    <h4 style="color:#3fb950; font-size:0.9rem; margin-bottom:0.5rem;">New Devices</h4>
+    <table class="result-table">
+        <thead><tr><th>IP</th><th>Status</th></tr></thead>
+        <tbody>
+            {% for ip in result.new_hosts %}
+            <tr><td>{{ ip }}</td><td><span class="status-join">joined</span></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if result.gone_hosts %}
+    <h4 style="color:#f85149; font-size:0.9rem; margin-top:1rem; margin-bottom:0.5rem;">Offline Devices</h4>
+    <table class="result-table">
+        <thead><tr><th>IP</th><th>Status</th></tr></thead>
+        <tbody>
+            {% for ip in result.gone_hosts %}
+            <tr><td>{{ ip }}</td><td><span class="status-leave">offline</span></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if result.hosts %}
+    <h4 style="color:#58a6ff; font-size:0.9rem; margin-top:1rem; margin-bottom:0.5rem;">All Online Hosts</h4>
+    <table class="result-table">
+        <thead><tr><th>IP</th></tr></thead>
+        <tbody>
+            {% for ip in result.hosts %}
+            <tr><td>{{ ip }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% else %}
+    <p class="placeholder">No results from watch scan.</p>
+    {% endif %}
+</div>

@@ -1,0 +1,10 @@
+<div class="result-section">
+    <h3>Reverse DNS — {{ target }}</h3>
+    {% if error %}
+    <p class="failed">{{ error }}</p>
+    {% elif result %}
+    <p>{{ target }} <span style="color:#8b949e;">→</span> <strong style="color:#3fb950;">{{ result }}</strong></p>
+    {% else %}
+    <p class="placeholder">No PTR record found for {{ target }}.</p>
+    {% endif %}
+</div>

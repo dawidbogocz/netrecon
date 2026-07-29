@@ -19,6 +19,9 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 import os
 
 from netrecon import ping, scan, banner, fingerprint, phish
+from netrecon import dns as netrecon_dns
+from netrecon import geo as netrecon_geo
+from netrecon import watch as netrecon_watch
 from netrecon import db as netrecon_db
 from netrecon.scan import parse_ports
 
@@ -215,6 +218,170 @@ async def scan_endpoint(
     return HTMLResponse(
         _render("_scan_loading.html", scan_id=scan_id, mode=mode, target=target)
     )
+
+
+# ── DNS ──────────────────────────────────────────────────────────
+
+@app.get("/dns", response_class=HTMLResponse)
+async def dns_endpoint(
+    request: Request,
+    target: str = Query(...),
+    mode: str = Query("lookup"),
+    timeout: float = Query(3.0),
+):
+    """DNS lookup, reverse DNS, or subdomain enumeration."""
+    scan_id = str(uuid.uuid4())[:12]
+
+    asyncio.create_task(
+        _run_dns_with_progress(scan_id, target, mode, timeout)
+    )
+
+    return HTMLResponse(
+        _render("_scan_loading.html", scan_id=scan_id, mode=f"dns/{mode}", target=target)
+    )
+
+
+async def _run_dns_with_progress(scan_id: str, target: str, mode: str, timeout: float):
+    try:
+        _scan_progress[scan_id] = {"status": "running", "mode": f"dns/{mode}", "target": target, "progress": 0, "message": "Starting DNS query..."}
+
+        if mode == "reverse":
+            await _update_progress(scan_id, message="Looking up PTR record...", progress=30)
+            hostname = netrecon_dns.dns_reverse(target, timeout=timeout)
+            await _update_progress(scan_id, message="Done", progress=100)
+            result = hostname
+            html = _render("_result_dns_reverse.html", target=target, result=result, scan_id=scan_id)
+        elif mode == "enum":
+            await _update_progress(scan_id, message="Enumerating subdomains...", progress=20)
+            subdomains = netrecon_dns.dns_enum(target, timeout=timeout)
+            await _update_progress(scan_id, message=f"Found {len(subdomains)} subdomains", progress=100)
+            result = {"subdomains": subdomains}
+            html = _render("_result_dns_enum.html", target=target, result=subdomains, scan_id=scan_id)
+        else:
+            await _update_progress(scan_id, message="Looking up DNS records...", progress=30)
+            records = netrecon_dns.dns_lookup(target, timeout=timeout)
+            await _update_progress(scan_id, message=f"Found {sum(len(v) for v in records.values())} records", progress=100)
+            result = records
+            html = _render("_result_dns.html", target=target, result=records, scan_id=scan_id)
+
+        now = datetime.now(timezone.utc).isoformat()
+        netrecon_db.save_scan({
+            "id": scan_id, "scan_type": f"dns/{mode}", "target": target,
+            "started_at": now, "completed_at": now, "status": "completed",
+            "summary": {"mode": mode, "target": target},
+            "raw_result": str(result)[:5000],
+        })
+        _scan_progress[scan_id] = {"status": "complete", "html": html}
+    except Exception as e:
+        logger.exception("DNS lookup failed")
+        html = _render("_result_dns.html", target=target, error=str(e), scan_id=scan_id)
+        _scan_progress[scan_id] = {"status": "complete", "html": html}
+
+
+# ── Geo ──────────────────────────────────────────────────────────
+
+@app.get("/geo", response_class=HTMLResponse)
+async def geo_endpoint(
+    request: Request,
+    target: str = Query(...),
+    timeout: float = Query(3.0),
+):
+    """Geolocation lookup for an IP address."""
+    scan_id = str(uuid.uuid4())[:12]
+
+    asyncio.create_task(
+        _run_geo_with_progress(scan_id, target, timeout)
+    )
+
+    return HTMLResponse(
+        _render("_scan_loading.html", scan_id=scan_id, mode="geo", target=target)
+    )
+
+
+async def _run_geo_with_progress(scan_id: str, target: str, timeout: float):
+    try:
+        _scan_progress[scan_id] = {"status": "running", "mode": "geo", "target": target, "progress": 0, "message": "Looking up geolocation..."}
+
+        await _update_progress(scan_id, message="Querying ip-api.com...", progress=50)
+        result = netrecon_geo.geo_lookup(target, timeout=timeout)
+        await _update_progress(scan_id, message="Done", progress=100)
+
+        now = datetime.now(timezone.utc).isoformat()
+        netrecon_db.save_scan({
+            "id": scan_id, "scan_type": "geo", "target": target,
+            "started_at": now, "completed_at": now, "status": "completed",
+            "summary": {"ip": result.get("ip"), "country": result.get("country"), "city": result.get("city")},
+            "raw_result": result,
+        })
+        html = _render("_result_geo.html", target=target, result=result, scan_id=scan_id)
+        _scan_progress[scan_id] = {"status": "complete", "html": html}
+    except Exception as e:
+        logger.exception("Geo lookup failed")
+        html = _render("_result_geo.html", target=target, error=str(e), scan_id=scan_id)
+        _scan_progress[scan_id] = {"status": "complete", "html": html}
+
+
+# ── Watch ────────────────────────────────────────────────────────
+
+@app.get("/watch", response_class=HTMLResponse)
+async def watch_endpoint(
+    request: Request,
+    target: str = Query(...),
+    interval: int = Query(60),
+    iterations: int = Query(5),
+    timeout: float = Query(1.0),
+    webhook: str | None = Query(None),
+):
+    """Run a watch scan and return results."""
+    scan_id = str(uuid.uuid4())[:12]
+
+    asyncio.create_task(
+        _run_watch_with_progress(scan_id, target, interval, iterations, timeout, webhook)
+    )
+
+    return HTMLResponse(
+        _render("_scan_loading.html", scan_id=scan_id, mode="watch", target=target)
+    )
+
+
+async def _run_watch_with_progress(scan_id: str, target: str, interval: int, iterations: int, timeout: float, webhook: str | None):
+    try:
+        _scan_progress[scan_id] = {"status": "running", "mode": "watch", "target": target, "progress": 0, "message": "Starting watch..."}
+
+        watcher = netrecon_watch.NetworkWatcher(
+            target,
+            discord_webhook=webhook,
+            timeout=timeout,
+        )
+
+        results = []
+        for i in range(iterations):
+            await _update_progress(scan_id, message=f"Scan {i+1}/{iterations}...", progress=int((i / iterations) * 90))
+            scan_result = watcher._do_scan()
+            results.append(scan_result)
+            if i < iterations - 1:
+                import asyncio
+                await asyncio.sleep(interval)
+
+        await _update_progress(scan_id, message=f"{iterations} scans complete", progress=100)
+
+        # Use the last scan result for display
+        last_result = results[-1] if results else {}
+
+        now = datetime.now(timezone.utc).isoformat()
+        netrecon_db.save_scan({
+            "id": scan_id, "scan_type": "watch", "target": target,
+            "started_at": now, "completed_at": now, "status": "completed",
+            "summary": {"scans": len(results), "total_hosts": last_result.get("total_hosts", 0)},
+            "raw_result": {"results": results} if results else {},
+        })
+
+        html = _render("_result_watch.html", target=target, result=last_result, scan_id=scan_id)
+        _scan_progress[scan_id] = {"status": "complete", "html": html}
+    except Exception as e:
+        logger.exception("Watch scan failed")
+        html = _render("_result_watch.html", target=target, error=str(e), scan_id=scan_id)
+        _scan_progress[scan_id] = {"status": "complete", "html": html}
 
 
 # ── Internal Scan Runners ─────────────────────────────────────────

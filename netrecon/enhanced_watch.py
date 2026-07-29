@@ -104,8 +104,8 @@ class EnhancedWatcher:
                 except Exception as e:
                     logger.error("Watch callback error: %s", e)
 
-            # Send Discord summary
-            if self.discord_webhook and change_report.get("has_changes"):
+            # Send Discord summary (skip first scan — it's the baseline)
+            if self.discord_webhook and change_report.get("has_changes") and self.scan_count > 1:
                 self._send_discord_summary(change_report)
 
             if iterations == 0 or iteration < iterations:
@@ -362,11 +362,6 @@ class EnhancedWatcher:
                 f"{oc['old_os']} → {oc['new_os']}"
             )
 
-        if not lines:
-            lines.append("No changes detected.")
-            if total_change_count == 0 and report["total_hosts"] > 0:
-                lines.append(f"All {report['total_hosts']} hosts stable.")
-
         description = "\n".join(lines)
 
         # Build port summary
@@ -381,14 +376,6 @@ class EnhancedWatcher:
             {"name": "Open Ports", "value": str(total_open_ports), "inline": True},
             {"name": "Changes", "value": str(total_change_count), "inline": True},
         ]
-
-        # If first scan, add context
-        if report["scan_number"] == 1 and report["new_hosts"]:
-            fields.append({
-                "name": "First Scan",
-                "value": "All hosts shown as new (baseline established)",
-                "inline": False,
-            })
 
         embed = build_alert_embed(
             f"🔍 Scan #{report['scan_number']} — {report['target']}",

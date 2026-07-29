@@ -88,7 +88,11 @@
                         <label>Interval (s): <input type="number" name="interval" value="60" min="10" step="10" style="width:70px"></label>
                         <label>Iterations: <input type="number" name="iterations" value="5" min="1" max="100" style="width:70px" placeholder="0=infinite"></label>
                         <label>Timeout: <input type="number" name="timeout" value="1" min="0.5" step="0.5" style="width:70px"></label>
-                        <label>Discord Webhook: <input type="text" name="webhook" placeholder="Optional Discord webhook URL" style="width:250px"></label>
+                        <label>Discord Webhook: <input type="text" name="webhook" placeholder="Optional Discord webhook URL" style="width:200px"></label>
+                        <label style="color:#c9d1d9; font-size:0.85rem; display:flex; align-items:center; gap:0.3rem;">
+                            <input type="checkbox" name="enhanced" value="1" checked>
+                            Enhanced (port scan, banners, OS)
+                        </label>
                     </div>
                 </form>
                 <div id="spinner-watch" class="htmx-indicator"><span class="spinner"></span>Watching network...</div>

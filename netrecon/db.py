@@ -80,6 +80,20 @@ def _init_schema(conn: sqlite3.Connection):
 
         CREATE INDEX IF NOT EXISTS idx_events_type
             ON events(event_type);
+
+        CREATE TABLE IF NOT EXISTS host_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id TEXT NOT NULL,
+            target TEXT NOT NULL,
+            ip TEXT NOT NULL,
+            alive INTEGER NOT NULL DEFAULT 0,
+            ports TEXT,
+            os TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_snapshots_lookup
+            ON host_snapshots(target, ip, created_at DESC);
     """)
 
 
@@ -296,12 +310,110 @@ def get_recent_events(
     return [dict(row) for row in rows]
 
 
+# ── Host Snapshots ────────────────────────────────────────────────
+
+
+def save_snapshot(
+    scan_id: str,
+    target: str,
+    ip: str,
+    alive: bool,
+    ports: dict | None = None,
+    os_info: dict | None = None,
+    db_path: str | None = None,
+) -> int:
+    """Save a per-host snapshot to the database.
+
+    Args:
+        scan_id: Scan cycle ID
+        target: The network target being watched
+        ip: Host IP address
+        alive: Whether the host responded to ping
+        ports: Dict of {port: {"state": ..., "service": ..., "banner": ...}}
+        os_info: Dict with "name" and "confidence"
+        db_path: Optional custom database path
+
+    Returns:
+        snapshot row id
+    """
+    conn = _get_connection(db_path)
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = conn.execute(
+        """INSERT INTO host_snapshots (scan_id, target, ip, alive, ports, os, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            scan_id,
+            target,
+            ip,
+            1 if alive else 0,
+            json.dumps(ports) if ports else None,
+            json.dumps(os_info) if os_info else None,
+            now,
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_latest_snapshot(
+    target: str,
+    ip: str,
+    db_path: str | None = None,
+) -> dict | None:
+    """Get the most recent snapshot for a host.
+
+    Args:
+        target: The network target
+        ip: Host IP address
+        db_path: Optional custom database path
+
+    Returns:
+        Snapshot dict or None
+    """
+    conn = _get_connection(db_path)
+    row = conn.execute(
+        """SELECT * FROM host_snapshots
+           WHERE target = ? AND ip = ?
+           ORDER BY created_at DESC LIMIT 1""",
+        (target, ip),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_dict(row)
+
+
+def get_24h_snapshots(
+    target: str,
+    db_path: str | None = None,
+) -> list[dict]:
+    """Get all snapshots from the last 24 hours for a target.
+
+    Args:
+        target: The network target
+        db_path: Optional custom database path
+
+    Returns:
+        List of snapshot dicts
+    """
+    from datetime import timedelta
+
+    conn = _get_connection(db_path)
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    rows = conn.execute(
+        """SELECT * FROM host_snapshots
+           WHERE target = ? AND created_at >= ?
+           ORDER BY created_at DESC""",
+        (target, cutoff),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def _row_to_dict(row: sqlite3.Row) -> dict:
     """Convert a sqlite3.Row to a regular dict with parsed JSON fields."""
     result = dict(row)
 
     # Parse JSON fields back to dicts
-    for field in ("summary", "raw_result"):
+    for field in ("summary", "raw_result", "ports", "os"):
         if field in result and isinstance(result[field], str):
             try:
                 result[field] = json.loads(result[field])

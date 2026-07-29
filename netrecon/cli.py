@@ -11,6 +11,7 @@ Subcommands:
 """
 
 import logging
+import os
 import sys
 
 import click
@@ -32,6 +33,7 @@ DNS = None
 GEO = None
 WATCH = None
 REPORT = None
+ENHANCED_WATCH = None
 
 
 def _lazy_import():
@@ -48,8 +50,10 @@ def _lazy_import():
     from netrecon import geo as _g
     from netrecon import watch as _w
     from netrecon import report as _r
+    from netrecon import enhanced_watch as _ew
     PING, SCAN, BANNER, FINGERPRINT, PHISH, OUTPUT = _p, _s, _b, _f, _ph, _o
     DNS, GEO, WATCH, REPORT = _d, _g, _w, _r
+    ENHANCED_WATCH = _ew
 
 
 def _setup_logging(verbose: bool):
@@ -362,19 +366,41 @@ def geo(ctx, ip, timeout):
 @click.option("--timeout", default=1.0, type=float)
 @click.option("--workers", default=50, type=int)
 @click.option("--webhook", default=None, help="Discord webhook URL for alerts")
-def watch(target, interval, iterations, timeout, workers, webhook):
+@click.option("--enhanced", is_flag=True, help="Deep scan: port scan, banner grab, OS fingerprint per host")
+def watch(target, interval, iterations, timeout, workers, webhook, enhanced):
     """Continuously scan a network and detect changes.
 
     Scans the target at regular intervals, detects new and offline
     hosts, logs to database, and optionally sends Discord alerts.
+
+    With --enhanced: also scans top 20 ports, grabs banners, fingerprints
+    OS on each host and detects port opens/closes and banner changes.
 
     Examples:
 
         netrecon watch 192.168.0.1-254 --interval 60
 
         netrecon watch 192.168.0.1-254 --webhook <url> --interval 300
+
+        netrecon watch 192.168.0.1-254 --enhanced --webhook <url> --interval 120
     """
     _lazy_import()
+
+    if enhanced or os.environ.get("NETRECON_ENHANCED_WATCH"):
+        click.echo("Starting enhanced watch (port scans, banners, OS fingerprint)...", err=True)
+        watcher = ENHANCED_WATCH.EnhancedWatcher(
+            target,
+            discord_webhook=webhook or DISCORD_WEBHOOK,
+            timeout=timeout,
+            workers=workers,
+        )
+        try:
+            watcher.run(interval=interval, iterations=iterations)
+        except KeyboardInterrupt:
+            click.echo("\nEnhanced watch stopped by user")
+            watcher.stop()
+        return
+
     watcher = WATCH.NetworkWatcher(
         target,
         discord_webhook=webhook or DISCORD_WEBHOOK,

@@ -22,6 +22,7 @@ from netrecon import ping, scan, banner, fingerprint, phish
 from netrecon import dns as netrecon_dns
 from netrecon import geo as netrecon_geo
 from netrecon import watch as netrecon_watch
+from netrecon import enhanced_watch as netrecon_enhanced_watch
 from netrecon import db as netrecon_db
 from netrecon.scan import parse_ports
 
@@ -331,33 +332,43 @@ async def watch_endpoint(
     iterations: int = Query(5),
     timeout: float = Query(1.0),
     webhook: str | None = Query(None),
+    enhanced: str | None = Query(None),
 ):
-    """Run a watch scan and return results."""
+    """Run a basic or enhanced watch scan."""
     scan_id = str(uuid.uuid4())[:12]
+    is_enhanced = enhanced == "1"
 
     asyncio.create_task(
-        _run_watch_with_progress(scan_id, target, interval, iterations, timeout, webhook)
+        _run_watch_with_progress(scan_id, target, interval, iterations, timeout, webhook, is_enhanced)
     )
 
     return HTMLResponse(
-        _render("_scan_loading.html", scan_id=scan_id, mode="watch", target=target)
+        _render("_scan_loading.html", scan_id=scan_id, mode="watch" + (" (enhanced)" if is_enhanced else ""), target=target)
     )
 
 
-async def _run_watch_with_progress(scan_id: str, target: str, interval: int, iterations: int, timeout: float, webhook: str | None):
+async def _run_watch_with_progress(scan_id: str, target: str, interval: int, iterations: int, timeout: float, webhook: str | None, enhanced: bool = False):
     try:
         _scan_progress[scan_id] = {"status": "running", "mode": "watch", "target": target, "progress": 0, "message": "Starting watch..."}
-
-        watcher = netrecon_watch.NetworkWatcher(
-            target,
-            discord_webhook=webhook,
-            timeout=timeout,
-        )
 
         results = []
         for i in range(iterations):
             await _update_progress(scan_id, message=f"Scan {i+1}/{iterations}...", progress=int((i / iterations) * 90))
-            scan_result = watcher._do_scan()
+
+            if enhanced:
+                watcher = netrecon_enhanced_watch.EnhancedWatcher(
+                    target, discord_webhook=webhook, timeout=timeout,
+                )
+                scan_result = watcher._do_enhanced_scan()
+                # Send Discord summary if webhook configured and changes detected
+                if webhook and scan_result.get("has_changes"):
+                    watcher._send_discord_summary(scan_result)
+            else:
+                watcher = netrecon_watch.NetworkWatcher(
+                    target, discord_webhook=webhook, timeout=timeout,
+                )
+                scan_result = watcher._do_scan()
+
             results.append(scan_result)
             if i < iterations - 1:
                 import asyncio
@@ -365,18 +376,17 @@ async def _run_watch_with_progress(scan_id: str, target: str, interval: int, ite
 
         await _update_progress(scan_id, message=f"{iterations} scans complete", progress=100)
 
-        # Use the last scan result for display
         last_result = results[-1] if results else {}
 
         now = datetime.now(timezone.utc).isoformat()
         netrecon_db.save_scan({
-            "id": scan_id, "scan_type": "watch", "target": target,
+            "id": scan_id, "scan_type": "watch" + ("-enhanced" if enhanced else ""), "target": target,
             "started_at": now, "completed_at": now, "status": "completed",
-            "summary": {"scans": len(results), "total_hosts": last_result.get("total_hosts", 0)},
+            "summary": {"scans": len(results), "total_hosts": last_result.get("total_hosts", 0), "enhanced": enhanced},
             "raw_result": {"results": results} if results else {},
         })
 
-        html = _render("_result_watch.html", target=target, result=last_result, scan_id=scan_id)
+        html = _render("_result_watch.html", target=target, result=last_result, scan_id=scan_id, enhanced=enhanced)
         _scan_progress[scan_id] = {"status": "complete", "html": html}
     except Exception as e:
         logger.exception("Watch scan failed")

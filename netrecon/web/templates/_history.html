@@ -17,6 +17,12 @@
         <div class="target">{{ item.target }}</div>
         <div class="meta">watch &middot; {{ item.started_at[:19] }}</div>
     </div>
+    {% elif item.scan_type == "watch-enhanced" %}
+    <div class="history-item" hx-get="/watch?target={{ item.target }}&enhanced=1"
+         hx-target="#results" hx-trigger="click">
+        <div class="target">{{ item.target }}</div>
+        <div class="meta">watch (enhanced) &middot; {{ item.started_at[:19] }}</div>
+    </div>
     {% else %}
     <div class="history-item" hx-get="/scan?target={{ item.target }}&mode={{ item.scan_type }}"
          hx-target="#results" hx-trigger="click">

@@ -405,7 +405,7 @@ def get_24h_snapshots(
            ORDER BY created_at DESC""",
         (target, cutoff),
     ).fetchall()
-    return [dict(row) for row in rows]
+    return [_row_to_dict(row) for row in rows]
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict:

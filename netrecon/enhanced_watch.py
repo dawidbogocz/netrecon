@@ -68,6 +68,8 @@ class EnhancedWatcher:
         self.previous_hosts: set[str] = set()
         self.scan_count = 0
         self._running = False
+        self._host_flap: dict[str, int] = {}  # host -> consecutive missed scans
+        self._host_pending_join: set[str] = set()  # hosts seen once, waiting for confirmation
 
     def run(
         self,
@@ -149,6 +151,31 @@ class EnhancedWatcher:
 
         new_hosts = sorted(current - self.previous_hosts)
         gone_hosts = sorted(self.previous_hosts - current)
+
+        # Debounce joins: a host needs 2 consecutive scans before being reported as "new"
+        confirmed_new = []
+        for ip in new_hosts:
+            if ip in self._host_pending_join:
+                # Seen in 2 consecutive scans — confirmed
+                confirmed_new.append(ip)
+                self._host_pending_join.discard(ip)
+            else:
+                # First sighting — add to pending
+                self._host_pending_join.add(ip)
+        # Clear pending for hosts that disappeared
+        self._host_pending_join -= current
+
+        # Debounce leaves: a host needs 2 consecutive misses before being reported as "gone"
+        for ip in list(gone_hosts):
+            self._host_flap[ip] = self._host_flap.get(ip, 0) + 1
+        truly_gone = {ip for ip, count in self._host_flap.items() if count >= 2}
+        truly_gone &= self.previous_hosts
+        gone_hosts = sorted(truly_gone)
+        # Clear flap counter for hosts that reappeared
+        for ip in current:
+            self._host_flap.pop(ip, None)
+
+        new_hosts = confirmed_new
 
         scan_id = str(uuid.uuid4())[:12]
         now = datetime.now(timezone.utc).isoformat()
